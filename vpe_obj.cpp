@@ -6,15 +6,20 @@
 #include <string.h>
 #include <fcntl.h>
 #include <iostream>
+
 #include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/time.h>
+
 #include <linux/videodev2.h>
 #include <linux/v4l2-controls.h>
+
 #include "v4l2_obj.h"
 #include "cmem_buf.h"
 #include "error.h"
 
 
-
+#define V4L2_CID_TRANS_NUM_BUFS         (V4L2_CID_PRIVATE_BASE)
 
 /*
 * Initialize the app resources with default parameters
@@ -31,9 +36,11 @@ void VPEObj::default_parameters(void) {
     src.size = src.width * src.height * 2;
     src.v4l2buf = NULL;
     src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-    src.coplanar = 0;
+    src.coplanar = false;
     src.field = V4L2_FIELD_ANY;
     src.colorspace = V4L2_COLORSPACE_SMPTE170M;
+    src.memory = V4L2_MEMORY_MMAP;
+
 
     dst.num_buffers = NBUF;
     dst.fourcc = V4L2_PIX_FMT_RGB24;
@@ -41,11 +48,12 @@ void VPEObj::default_parameters(void) {
     dst.height = MODEL_HEIGHT;
     dst.size = dst.width * dst.height * 3;
     dst.v4l2buf = NULL;
-    dst.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-    dst.coplanar = 0;
+    // CAPTURE is the output buffer of the VPE
+    dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    dst.coplanar = false;
     dst.field = V4L2_FIELD_ANY;
     dst.colorspace = V4L2_COLORSPACE_SRGB;
-
+    dst.memory = V4L2_MEMORY_MMAP;
     return;
 }
 
@@ -65,34 +73,38 @@ bool VPEObj::open_fd() {
 }
 
 
-int VPEObj::set_ctrl()
+bool VPEObj::set_ctrl()
 {
 	int ret;
 	struct	v4l2_control ctrl;
 
 	memset(&ctrl, 0, sizeof(ctrl));
-	ctrl.id = V4L2_CID_PRIVATE_BASE;
+	ctrl.id = V4L2_CID_TRANS_NUM_BUFS;
 	ctrl.value = m_translen;
 	ret = ioctl(m_fd, VIDIOC_S_CTRL, &ctrl);
-	if (ret < 0)
+	if (ret < 0) {
 		ERROR("vpe: S_CTRL failed\n");
-
-	return 0;
+    return false;
+  }
+	return true;
 }
 
-bool VPEObj::vpe_input_init(int *fd)
+bool VPEObj::vpe_input_init()
 {
 	int ret, i;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers rqbufs;
+  struct v4l2_buffer v4l2buf;
+  struct v4l2_plane		buf_planes[2];
   struct v4l2_capability capability;
   struct v4l2_streamparm streamparam;
 
-	set_ctrl();
+	if (!set_ctrl()) return false;
 
   MSG("\n%s: Opened Channel\n", m_dev_name.c_str());
 
   /* Check if the device is capable of streaming */
+  /*
   if (ioctl(m_fd, VIDIOC_QUERYCAP, &capability) < 0) {
       ERROR("VIDIOC_QUERYCAP");
   }
@@ -103,18 +115,14 @@ bool VPEObj::vpe_input_init(int *fd)
       ERROR("%s: Not capable of streaming\n", m_dev_name.c_str());
   }
 
-  streamparam.type = src.type;
-  if (ioctl(m_fd, VIDIOC_G_PARM, &streamparam) < 0){
-      ERROR("VIDIOC_G_PARM");
-  }
 
-  src.fmt.type = src.type;
   ret = ioctl(m_fd, VIDIOC_G_FMT, &src.fmt);
   if (ret < 0) {
       ERROR("VIDIOC_G_FMT failed: %s (%d)", strerror(errno), ret);
       return false;
-  }
-	//memset(&fmt, 0, sizeof fmt);
+  }*/
+	memset(&fmt, 0, sizeof fmt);
+  src.fmt.type = src.type;
 	fmt.type = src.type;
 	fmt.fmt.pix_mp.width = src.width;
 	fmt.fmt.pix_mp.height = src.height;
@@ -158,8 +166,8 @@ bool VPEObj::vpe_input_init(int *fd)
 
 	memset(&rqbufs, 0, sizeof(rqbufs));
 	rqbufs.count = NBUF;
-	rqbufs.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	rqbufs.memory = V4L2_MEMORY_DMABUF;
+	rqbufs.type = src.type;
+	rqbufs.memory = src.memory;
 
 	ret = ioctl(m_fd, VIDIOC_REQBUFS, &rqbufs);
 	if (ret < 0) {
@@ -167,47 +175,54 @@ bool VPEObj::vpe_input_init(int *fd)
     return false;
   }
 	src.num_buffers = rqbufs.count;
-  src.v4l2buf = (struct v4l2_buffer *) calloc(src.num_buffers, sizeof(struct v4l2_buffer));
-  if (!src.v4l2buf) {
-      ERROR("allocation failed");
-      return -1;
-  }
+  src.base_addr = (unsigned int **) calloc(src.num_buffers, sizeof(unsigned int));
+  for (i = 0; i < src.num_buffers; i++) {
+    memset(&v4l2buf, 0, sizeof(v4l2buf));
+    v4l2buf.type = src.type;
+    v4l2buf.memory = src.memory;
+    v4l2buf.m.planes	= buf_planes;
+    v4l2buf.length	= src.coplanar ? 2 : 1;
+    v4l2buf.index = i;
 
-  for (i = 0; i < rqbufs.count; i++) {
-      struct v4l2_plane planes[2];
-      memset(&planes, 0, sizeof planes);
-      memset(&src.v4l2buf[i], 0, sizeof(struct v4l2_buffer));
-      src.v4l2buf[i].type =  rqbufs.type;
-      src.v4l2buf[i].memory = rqbufs.memory;
-      src.v4l2buf[i].index = i;
-      src.v4l2buf[i].m.planes = &planes[0];
+    ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+    if (ret) {
+        ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+        return ret;
+    }
+    src.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
+           MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
 
-      MSG("buffer index %d", i);
-      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &src.v4l2buf[i]);
-      src.v4l2buf[i].m.fd = fd[i];
-      if (ret) {
-          ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-          return false;
+
+    if (MAP_FAILED == src.base_addr[i]) {
+      while(i>=0){
+        /* Unmap all previous buffers in case of failure*/
+        i--;
+        munmap(src.base_addr[i], src.size);
+        src.base_addr[i] = NULL;
       }
-
+      ERROR("Cant mmap buffers Y");
+      return false;
+    }
   }
+
 	return true;
 
 }
 
-bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
+bool VPEObj::vpe_output_init()
 {
-	int ret; //, i;
+	int ret;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers rqbufs;
-	bool saved_multiplanar;
+  struct v4l2_plane		buf_planes[2];
+  struct v4l2_buffer v4l2buf;
 
-	memset(&fmt, 0, sizeof fmt);
-	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	bzero(&fmt, sizeof fmt);
+	fmt.type = dst.type;
 	fmt.fmt.pix_mp.width = dst.width;
 	fmt.fmt.pix_mp.height = dst.height;
 	fmt.fmt.pix_mp.pixelformat = dst.fourcc;
-	fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
+	fmt.fmt.pix_mp.field = dst.field;
 	fmt.fmt.pix_mp.colorspace = dst.colorspace;
 	fmt.fmt.pix_mp.num_planes = dst.coplanar ? 2 : 1;
 
@@ -216,6 +231,10 @@ bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
 		ERROR( "%s: vpe o/p: S_FMT failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
+  src.size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+  src.size_uv = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
+  MSG("size %d", fmt.fmt.pix_mp.plane_fmt[0].sizeimage);
+  MSG("size_uv %d", fmt.fmt.pix_mp.plane_fmt[1].sizeimage);
 
 	ret = ioctl(m_fd, VIDIOC_G_FMT, &fmt);
 	if (ret < 0) {
@@ -229,8 +248,8 @@ bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
 
 	memset(&rqbufs, 0, sizeof(rqbufs));
 	rqbufs.count = NBUF;
-	rqbufs.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	rqbufs.memory = V4L2_MEMORY_DMABUF;
+	rqbufs.type = dst.type;
+	rqbufs.memory = dst.memory;
 
 	ret = ioctl(m_fd, VIDIOC_REQBUFS, &rqbufs);
 	if (ret < 0) {
@@ -239,6 +258,25 @@ bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
   }
 
 	dst.num_buffers = rqbufs.count;
+  dst.base_addr = (unsigned int **) calloc(dst.num_buffers, sizeof(unsigned int));
+  for (int i = 0; i < dst.num_buffers; i++) {
+      memset(&v4l2buf, 0, sizeof(v4l2buf));
+      v4l2buf.type = dst.type;
+      v4l2buf.memory = dst.memory;
+      v4l2buf.m.planes	= buf_planes;
+      v4l2buf.length	= dst.coplanar ? 2 : 1;
+      v4l2buf.index = i;
+
+      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+      dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
+             MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+
+      if (ret) {
+          ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+          return ret;
+      }
+  }
+
 	MSG("%s: vpe o/p: allocated buffers = %d\n", m_dev_name.c_str(), rqbufs.count);
 
 	/*
@@ -251,9 +289,9 @@ bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
 	 * Here we saved to current value and restore it after we are done
 	 * allocating the buffers VPE will use for output.
 	 */
-   /*
+/*
 	saved_multiplanar = disp->multiplanar;
-	disp->multiplanar = true;
+	disp->multiplanar = false;
 	disp_bufs = disp_get_vid_buffers(vpe->disp, NUMBUF, vpe->dst.fourcc,
 					      vpe->dst.width, vpe->dst.height);
 	vpe->disp->multiplanar = saved_multiplanar;
@@ -277,6 +315,46 @@ bool VPEObj::vpe_output_init(BufObj vpe_output_buffer)
 	return true;
 }
 
+int VPEObj::input_qbuf(int index)
+{
+	int ret;
+	struct v4l2_buffer buf;
+	struct v4l2_plane planes[2];
+
+	MSG("vpe: src QBUF (%d):%s field", src.field,
+		src.field==V4L2_FIELD_TOP?"top":"bottom");
+
+	memset(&buf, 0, sizeof buf);
+	memset(&planes, 0, sizeof planes);
+
+	planes[0].length = planes[0].bytesused = src.size;
+	if(src.coplanar)
+		planes[1].length = planes[1].bytesused = src.size_uv;
+
+	planes[0].data_offset = planes[1].data_offset = 0;
+
+	buf.type = src.type;
+	buf.memory = src.memory;
+	buf.index = index;
+	buf.m.planes = &planes[0];
+	buf.field = src.field;
+	if (src.coplanar)
+		buf.length = 2;
+	else
+		buf.length = 1;
+
+	// buf.m.planes[0].m.fd = vpe->input_buf_dmafd[index];
+	// if(vpe->src.coplanar)
+	// 	buf.m.planes[1].m.fd = vpe->input_buf_dmafd_uv[index];
+
+	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
+	if (ret < 0) {
+		ERROR( "vpe i/p: QBUF failed: %s, index = %d\n", strerror(errno), index);
+      return false;
+  }
+	return true;
+}
+
 bool VPEObj::output_qbuf(int index)
 {
 	int ret;
@@ -286,14 +364,16 @@ bool VPEObj::output_qbuf(int index)
 	memset(&buf, 0, sizeof buf);
 	memset(&planes, 0, sizeof planes);
 
-	buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	buf.memory = V4L2_MEMORY_DMABUF;
+	buf.type = dst.type;
+	buf.memory = dst.memory;
 	buf.index = index;
 	buf.m.planes = &planes[0];
 	if(dst.coplanar)
 		buf.length = 2;
 	else
 		buf.length = 1;
+
+  gettimeofday(&buf.timestamp, NULL);
 
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
 	if (ret < 0) {
@@ -304,20 +384,80 @@ bool VPEObj::output_qbuf(int index)
 	return true;
 }
 
+
+int VPEObj::input_dqbuf()
+{
+	int ret;
+	struct v4l2_buffer buf;
+	struct v4l2_plane planes[2];
+
+	memset(&buf, 0, sizeof buf);
+	memset(&planes, 0, sizeof planes);
+
+	buf.type = src.type;
+	buf.memory = src.memory;
+  buf.m.planes = &planes[0];
+  if (src.coplanar)
+		buf.length = 2;
+	else
+		buf.length = 1;
+	ret = ioctl(m_fd, VIDIOC_DQBUF, &buf);
+  if (ret < 0) {
+    return -1;
+  }
+	return buf.index;
+}
+
+
+int VPEObj::output_dqbuf()
+{
+	int ret;
+	struct v4l2_buffer buf;
+	struct v4l2_plane planes[2];
+
+	memset(&buf, 0, sizeof buf);
+	memset(&planes, 0, sizeof planes);
+	buf.type = dst.type;
+	buf.memory = dst.memory;
+        buf.m.planes = &planes[0];
+	if(dst.coplanar)
+		buf.length = 2;
+	else
+		buf.length = 1;
+	ret = ioctl(m_fd, VIDIOC_DQBUF, &buf);
+	if (ret < 0) {
+		ERROR("vpe o/p: DQBUF failed: %s\n", strerror(errno));
+    return -1;
+  }
+
+	return buf.index;
+}
+
+
 /*
 * Enable streaming for V4L2 capture device
 */
-int VPEObj::stream_on(){
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-    int ret = 0;
+bool VPEObj::stream_on(int layer){
+  enum v4l2_buf_type type;
+  int ret;
 
-    ret = ioctl(m_fd, VIDIOC_STREAMON, &type);
+  if (layer == 1) {
+    type = (v4l2_buf_type) dst.type;
+    MSG("Streaming VPE Output");
+  }
+  else if (layer == 0) {
+    type = (v4l2_buf_type) src.type;
+    MSG("Streaming VPE Intput");
+  }
 
-    if (ret) {
-        ERROR("VIDIOC_STREAMON failed: %s (%d)", strerror(errno), ret);
-    }
+  ret = ioctl(m_fd, VIDIOC_STREAMON, &type);
 
-    return ret;
+  if (ret) {
+      ERROR("VIDIOC_STREAMON failed: %s (%d)", strerror(errno), ret);
+      return false;
+  }
+
+  return true;
 }
 
 
