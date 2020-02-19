@@ -33,6 +33,9 @@ class VPEObj {
 public:
   int m_fd;
   int m_deinterlace;
+  ImageParams src;
+  ImageParams dst;
+
   VPEObj();
   VPEObj(std::string * dev_name, int w, int h, int pix_fmt, int num_buf,
     int type);
@@ -54,8 +57,6 @@ public:
 private:
   bool set_ctrl();
   void default_parameters();
-  ImageParams src;
-  ImageParams dst;
   int m_field;
   std::string m_dev_name;
   int m_translen;
@@ -65,11 +66,13 @@ private:
 class VIPObj {
 public:
   int m_fd;
+  ImageParams src;
+
   VIPObj();
   VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type);
   ~VIPObj();
   int set_format();
-  void device_init(int pix_fmt);
+  void device_init();
   bool queue_buf(int index);
   bool request_buf();
   bool stream_on();
@@ -79,6 +82,5 @@ public:
 
 private:
   void default_parameters();
-  ImageParams src;
   std::string m_dev_name;
 };

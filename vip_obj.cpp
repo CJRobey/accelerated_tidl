@@ -27,7 +27,8 @@ void VIPObj::default_parameters(void) {
     m_dev_name = "/dev/video1";
 
     src.num_buffers = NBUF;
-    src.fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+    src.fourcc = V4L2_PIX_FMT_YUYV;
+    src.colorspace = V4L2_COLORSPACE_SMPTE170M;
     src.width = CAP_WIDTH;
     src.height = CAP_HEIGHT;
     src.memory = V4L2_MEMORY_MMAP;
@@ -38,7 +39,7 @@ void VIPObj::default_parameters(void) {
 }
 
 
-void VIPObj::device_init(int pix_fmt){
+void VIPObj::device_init(){
     struct v4l2_capability capability;
     struct v4l2_streamparm streamparam;
     int ret;
@@ -82,8 +83,9 @@ void VIPObj::device_init(int pix_fmt){
     src.fmt.type = src.type;
     src.fmt.fmt.pix.width = src.width;
     src.fmt.fmt.pix.height = src.height;
-    src.fmt.fmt.pix.pixelformat = pix_fmt;
+    src.fmt.fmt.pix.pixelformat = src.fourcc;
     src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
+    src.fmt.fmt.pix.colorspace = src.colorspace;
 
     ret = ioctl(m_fd, VIDIOC_S_FMT, &src.fmt);
     if (ret < 0) {
@@ -104,7 +106,7 @@ ERR:
 
 VIPObj::VIPObj(){
     default_parameters();
-    device_init(V4L2_PIX_FMT_YUYV);
+    device_init();
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
@@ -115,9 +117,9 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.height = h;
     src.num_buffers = num_buf;
     src.type=(v4l2_buf_type) type;
-    //src.fmt.fmt.pix.pixelformat = pix_fmt;
+    src.fourcc = pix_fmt;
 
-    device_init(pix_fmt);
+    device_init();
 }
 
 VIPObj::~VIPObj(){

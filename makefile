@@ -15,5 +15,5 @@ ALL_CFLAGS := $(ALL_RELEASE) $(DEFS) $(INCLUDES) $(CFLAGS)
 ALL_CXXFLAGS := $(ALL_RELEASE) $(DEFS) $(INCLUDES) $(CFLAGS)
 LDFLAGS :=
 
-capturevpedisplay: capturevpedisplay.cpp vip_obj.cpp vpe_obj.cpp cmem_buf.cpp
-	$(CXX) $(ALL_CFLAGS) -o $@ $^ -ldrm -ldrm_omap -lpthread -lticmem
+capturevpedisplay: capturevpedisplay.cpp vip_obj.cpp vpe_obj.cpp cmem_buf.cpp save_utils.cpp
+	$(CXX) $(ALL_CFLAGS) -o $@ $^ -ldrm -ldrm_omap -lpthread -lticmem -lopencv_highgui -lopencv_imgcodecs -lopencv_imgproc -lopencv_core

@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <string.h>
+#include <algorithm>
 #include "error.h"
 
 #include <linux/videodev2.h>
@@ -13,6 +14,8 @@
 #include <sys/ioctl.h>
 #include "v4l2_obj.h"
 #include "cmem_buf.h"
+
+#include "save_utils.h"
 
 #define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
     ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
@@ -65,18 +68,24 @@ int main() {
     vpe.output_qbuf(i);
 
   if (!vip.stream_on()) return -1;
+
+  // begin streaming the output of the vpe
   if (!vpe.stream_on(1)) return -1;
 
   while(1) {
 
     frame_num = vip.dequeue_buf();
-    MSG("vip dq done");
+    write_binary_file((void *)vip.src.base_addr[frame_num], "vip_800x600data.yuv", 800*600*3);
+
+
+    memcpy(vpe.src.base_addr[frame_num], vip.src.base_addr[frame_num], 800*600*3);
+    write_binary_file((void *)vpe.src.base_addr[frame_num], "vpe_in_800x600data.yuv", 800*600*3);
+    //save_data((void *) vip.src.base_addr[frame_num], 800, 600, 3, 3);
     if (!vpe.input_qbuf(frame_num)) {
       ERROR("input qbuf failed");
       return -1;
     }
 
-    MSG("Done with vip dq and vpe_in_qbuf");
     if (!stop_after_one) {
 			count++;
 			for (int i = 1; i <= NBUF; i++) {
@@ -86,6 +95,7 @@ int main() {
 					vpe.input_qbuf(frame_num);
 				}
         else {
+          //begin streaming the input of the vpe
 					vpe.stream_on(0);
 					stop_after_one = true;
 					break;
@@ -94,6 +104,8 @@ int main() {
 			}
 		}
     frame_num = vpe.output_dqbuf();
+    write_binary_file((void *)vpe.dst.base_addr[frame_num], "vpe_out_768x332data.rgb", 768*332*3);
+
     vpe.output_qbuf(frame_num);
     frame_num = vpe.input_dqbuf();
     vip.queue_buf(frame_num);

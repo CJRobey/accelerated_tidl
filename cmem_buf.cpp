@@ -43,6 +43,11 @@
 
 #define CMEM_BLOCKID CMEM_CMABLOCKID
 
+#define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
+    ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
+    ((uint32_t)(uint8_t)(d) << 24 ))
+#define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
+
 CMEM_AllocParams cmem_alloc_params = {
     CMEM_HEAP,      /* type */
     CMEM_CACHED,    /* flags */
@@ -127,6 +132,10 @@ BufObj::BufObj(unsigned int w, unsigned int h, unsigned int bpp,
         * height and hence adjust the buffer size accrodingly.
         */
         uint32_t size = m_stride * ((m_height + 3) & ~3);
+        // MSG("size init %d", size);
+        // if (fourcc == FOURCC_STR("RGB3"))
+        //   size = m_width*m_height*20;
+        // MSG("size after %d", size);
 
         m_fd[i]  = alloc_cmem_buffer(size, align, &m_buf[i]);
 
