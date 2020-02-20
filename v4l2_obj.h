@@ -44,9 +44,9 @@ public:
   void vpe_close();
   int set_src_format();
   int set_dst_format();
-  bool vpe_input_init();
+  bool vpe_input_init(int *fd);
   bool vpe_output_init();
-  int input_qbuf(int index);
+  bool input_qbuf(int fd);
   bool output_qbuf(int index);
   bool stream_on(int layer);
   int stream_off();
@@ -73,8 +73,8 @@ public:
   ~VIPObj();
   int set_format();
   void device_init();
-  bool queue_buf(int index);
-  bool request_buf();
+  bool queue_buf(int fd);
+  bool request_buf(int *fd);
   bool stream_on();
   int stream_off();
   int dequeue_buf();
