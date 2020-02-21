@@ -100,7 +100,7 @@ BufObj::BufObj(unsigned int w, unsigned int h, unsigned int bpp,
     /* Vivante HAL needs 16 pixel alignment in width and 4 pixel alignment in
     * height and hence putting that restriction for now on all buffer allocation through CMEM.
     */
-    m_stride = ((w + 15) & ~15) * bpp;
+    m_stride = w * bpp;
     m_fourcc = fourcc;
     m_num_bufs = num_bufs;
 
