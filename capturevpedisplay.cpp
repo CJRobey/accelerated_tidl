@@ -91,13 +91,11 @@ int main() {
   while(1) {
 
     frame_num = vip.dequeue_buf(&vpe);
-    //write_binary_file(bo_vpe_in.m_buf[frame_num], "images/vip_800x600data.yuv", 800*600*3);
-    sprintf(name, "images/%dvpe_in_800x600data.yuv", num++);
-    MSG("Saving file %s", name);
-    write_binary_file((void *)bo_vpe_in.m_buf[frame_num], name, 768*332*3);
-    //,memcpy(vpe.src.base_addr[frame_num], (void *)bo_vpe_in.m_buf[frame_num], 800*600*3);
-    //write_binary_file((void *)vpe.src.base_addr[frame_num], "images/vpe_in_800x600data.yuv", 800*600*3);
-    //save_data((void *) vip.src.base_addr[frame_num], 800, 600, 3, 3);
+
+    // sprintf(name, "images/%dvpe_in_800x600data.yuv", num++);
+    // MSG("Saving file %s", name);
+    // write_binary_file((void *)bo_vpe_in.m_buf[frame_num], name, 768*332*3);
+
     if (!vpe.input_qbuf(bo_vpe_in.m_fd[frame_num], frame_num)) {
       ERROR("vpe input queue buffer failed");
       return -1;
@@ -121,9 +119,9 @@ int main() {
 			}
 		}
     frame_num = vpe.output_dqbuf();
-    sprintf(name, "images/%dvpe_out_768x332data.rgb", num++);
-    MSG("Saving file %s", name);
-    write_binary_file((void *)vpe.dst.base_addr[frame_num], name, 768*332*3);
+
+    /**********DATA IS HERE!!************/
+    void *imagedata = (void *)vpe.dst.base_addr[frame_num];
 
     vpe.output_qbuf(frame_num);
     frame_num = vpe.input_dqbuf();
