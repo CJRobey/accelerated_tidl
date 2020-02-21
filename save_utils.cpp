@@ -1,4 +1,5 @@
 #include "save_utils.h"
+#include "error.h"
 
 #define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
     ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
@@ -130,7 +131,8 @@ void save_data(void *img_data, int w, int h, const int out_channels=4, const int
 }
 
 
-void write_binary_file(void *data, std::string name, unsigned int size) {
+void write_binary_file(void *data, char *name, unsigned int size) {
   std::ofstream file(name, std::ios::out | std::ios::binary);
   file.write((char *)data, size);
+  MSG("Saved file %s", name);
 }

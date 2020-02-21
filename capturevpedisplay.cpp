@@ -93,7 +93,6 @@ int main() {
     frame_num = vip.dequeue_buf(&vpe);
 
     // sprintf(name, "images/%dvpe_in_800x600data.yuv", num++);
-    // MSG("Saving file %s", name);
     // write_binary_file((void *)bo_vpe_in.m_buf[frame_num], name, 768*332*3);
 
     if (!vpe.input_qbuf(bo_vpe_in.m_fd[frame_num], frame_num)) {
@@ -122,13 +121,16 @@ int main() {
 
     /**********DATA IS HERE!!************/
     void *imagedata = (void *)vpe.dst.base_addr[frame_num];
-
+    sprintf(name, "images/test.rgb");
+    write_binary_file(imagedata, name, (int)MODEL_WIDTH*MODEL_HEIGHT*3);
     vpe.output_qbuf(frame_num);
     frame_num = vpe.input_dqbuf();
     vip.queue_buf(bo_vpe_in.m_fd[frame_num], frame_num);
 
   }
 
-
+  vip.stream_off();
+  vpe.stream_off(1);
+  vpe.stream_off(0);
   return 0;
 }

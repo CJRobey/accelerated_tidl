@@ -31,6 +31,7 @@
 *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
 */
+#include <xf86drmMode.h>
 
 #ifndef CMEM_BUF_H
 #define CMEM_BUF_H
@@ -39,6 +40,9 @@ class BufObj {
 public:
     BufObj(unsigned int w, unsigned int h, unsigned int bpp,
       unsigned int fourcc, unsigned int align, unsigned int num_bufs);
+    BufObj(unsigned int w, unsigned int h, unsigned int bpp,
+      unsigned int fourcc, unsigned int align, unsigned int num_bufs,
+      bool use_cmem);
     ~BufObj();
 
     //If applications wants to do cache operations on buffer
@@ -48,6 +52,8 @@ public:
     uint32_t m_width;
     uint32_t m_height;
     uint32_t m_stride;
+    uint32_t m_num_bufs;
+    struct omap_bo *bo[4];
 
     int *m_fd;
     uint32_t *m_fb_id;
@@ -56,7 +62,6 @@ public:
 private:
     int alloc_cmem_buffer(unsigned int size, unsigned int align, void **cmem_buf);
     void free_cmem_buffer(void *cmem_buffer);
-    uint32_t m_num_bufs;
 };
 
 #endif //CMEM_BUF_H

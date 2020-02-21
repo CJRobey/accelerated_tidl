@@ -8,4 +8,4 @@
 void printType(cv::Mat &mat);
 void printInfo(cv::Mat &mat);
 void save_data(void *img_data, int w, int h, const int out_channels, const int in_channels);
-void write_binary_file(void *data, std::string name, unsigned int size);
+void write_binary_file(void *data, char *name, unsigned int size);

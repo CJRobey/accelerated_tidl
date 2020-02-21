@@ -128,14 +128,7 @@ BufObj::BufObj(unsigned int w, unsigned int h, unsigned int bpp,
 
     for(uint32_t i = 0; i < num_bufs; i++){
 
-        /* Vivante HAL needs 16 pixel alignment in width and 4 pixel alignment in
-        * height and hence adjust the buffer size accrodingly.
-        */
         uint32_t size = m_stride * ((m_height + 3) & ~3);
-        // MSG("size init %d", size);
-        // if (fourcc == FOURCC_STR("RGB3"))
-        //   size = m_width*m_height*20;
-        // MSG("size after %d", size);
 
         m_fd[i]  = alloc_cmem_buffer(size, align, &m_buf[i]);
 

@@ -472,6 +472,32 @@ bool VPEObj::stream_on(int layer){
   return true;
 }
 
+/*
+* Enable streaming for V4L2 capture device
+*/
+bool VPEObj::stream_off(int layer){
+  enum v4l2_buf_type type;
+  int ret;
+
+  if (layer == 1) {
+    type = (v4l2_buf_type) dst.type;
+    MSG("Streaming VPE Output");
+  }
+  else if (layer == 0) {
+    type = (v4l2_buf_type) src.type;
+    MSG("Streaming VPE Intput");
+  }
+
+  ret = ioctl(m_fd, VIDIOC_STREAMOFF, &type);
+
+  if (ret) {
+      ERROR("VIDIOC_STREAMOFF failed: %s (%d)", strerror(errno), ret);
+      return false;
+  }
+
+  return true;
+}
+
 
 
 VPEObj::VPEObj(){
