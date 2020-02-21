@@ -29,6 +29,7 @@ void VPEObj::default_parameters(void) {
     m_fd = 0;
     m_dev_name = "/dev/video0";
     m_deinterlace = 0;
+    m_field = V4L2_FIELD_ANY;
 
     src.num_buffers = NBUF;
     src.fourcc = V4L2_PIX_FMT_YUYV;
@@ -39,7 +40,6 @@ void VPEObj::default_parameters(void) {
     // OUTPUT is the input buffer of the VPE
     src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     src.coplanar = false;
-    src.field = V4L2_FIELD_ANY;
     src.colorspace = V4L2_COLORSPACE_SMPTE170M;
     src.memory = V4L2_MEMORY_DMABUF;
 
@@ -53,7 +53,6 @@ void VPEObj::default_parameters(void) {
     // CAPTURE is the output buffer of the VPE
     dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     dst.coplanar = false;
-    dst.field = V4L2_FIELD_ANY;
     dst.colorspace = V4L2_COLORSPACE_SRGB;
     dst.memory = V4L2_MEMORY_MMAP;
     return;
@@ -97,25 +96,40 @@ bool VPEObj::vpe_input_init(int *fd)
 	struct v4l2_requestbuffers rqbufs;
   struct v4l2_buffer v4l2buf;
   struct v4l2_plane		buf_planes[2];
-  struct v4l2_capability capability;
-  struct v4l2_streamparm streamparam;
 
 	if (!set_ctrl()) return false;
 
   MSG("\n%s: Opened Channel\n", m_dev_name.c_str());
-
-  src.fmt.type = src.type;
-  src.fmt.fmt.pix_mp.width = src.width;
-	src.fmt.fmt.pix_mp.height = src.height;
-	src.fmt.fmt.pix_mp.pixelformat = src.fourcc;
-	src.fmt.fmt.pix_mp.colorspace = src.colorspace;
-  src.fmt.fmt.pix_mp.field = V4L2_FIELD_ALTERNATE;
-  src.fmt.fmt.pix_mp.num_planes = src.coplanar ? 2 : 1;
+  if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+    src.fmt.type = src.type;
+    src.fmt.fmt.pix_mp.width = src.width;
+  	src.fmt.fmt.pix_mp.height = src.height;
+  	src.fmt.fmt.pix_mp.pixelformat = src.fourcc;
+  	src.fmt.fmt.pix_mp.colorspace = src.colorspace;
+    src.fmt.fmt.pix_mp.field = m_field;
+    src.fmt.fmt.pix_mp.num_planes = src.coplanar ? 2 : 1;
+    src.fmt.fmt.pix_mp.plane_fmt[0].bytesperline = int(src.size/src.height);
+    src.fmt.fmt.pix_mp.plane_fmt[0].sizeimage = src.size;
+  }
+  else {
+    src.fmt.type = src.type;
+    src.fmt.fmt.pix.width = src.width;
+  	src.fmt.fmt.pix.height = src.height;
+  	src.fmt.fmt.pix.pixelformat = src.fourcc;
+  	src.fmt.fmt.pix.colorspace = src.colorspace;
+    src.fmt.fmt.pix.field = m_field;
+    src.fmt.fmt.pix.bytesperline = int(src.size/src.height);
+    src.fmt.fmt.pix.sizeimage = src.size;
+    }
 
 	ret = ioctl(m_fd, VIDIOC_S_FMT, &src.fmt);
 	if (ret < 0) {
 		ERROR( "%s: vpe i/p: S_FMT failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
+  }
+  else if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+    src.size = src.fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+    src.size_uv = src.fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
   }
 
 	ret = ioctl(m_fd, VIDIOC_G_FMT, &src.fmt);
@@ -123,9 +137,16 @@ bool VPEObj::vpe_input_init(int *fd)
 		ERROR( "%s: vpe i/p: G_FMT_2 failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
+  if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 	MSG("%s: vpe i/p: G_FMT: width = %u, height = %u, 4cc = %.4s\n",
 			m_dev_name.c_str(), src.fmt.fmt.pix_mp.width, src.fmt.fmt.pix_mp.height,
 			(char*)&src.fmt.fmt.pix_mp.pixelformat);
+    }
+  else {
+    MSG("%s: vpe i/p: G_FMT: width = %u, height = %u, 4cc = %.4s\n",
+        m_dev_name.c_str(), src.fmt.fmt.pix.width, src.fmt.fmt.pix.height,
+        (char*)&src.fmt.fmt.pix.pixelformat);
+  }
 
 //	set_crop(vpe);
 
@@ -140,38 +161,54 @@ bool VPEObj::vpe_input_init(int *fd)
     return false;
   }
 	src.num_buffers = rqbufs.count;
-  src.base_addr = (unsigned int **) calloc(src.num_buffers, sizeof(unsigned int));
-  src.v4l2buf = (struct v4l2_buffer *) calloc(src.num_buffers, \
-      sizeof(struct v4l2_buffer));
-  for (int i = 0; i < src.num_buffers; i++) {
-    src.v4l2buf[i].type = src.type;
-    src.v4l2buf[i].memory = src.memory;
-    src.v4l2buf[i].m.planes	= buf_planes;
-    src.v4l2buf[i].length	= src.coplanar ? 2 : 1;
-    src.v4l2buf[i].index = i;
 
-    ret = ioctl(m_fd, VIDIOC_QUERYBUF, &src.v4l2buf[i]);
-    if (ret) {
-        ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-        return false;
-    }
-    src.v4l2buf[i].m.fd = fd[i];
-    //
-    // src.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
-    //        MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
-    //
-    //
-    // if (MAP_FAILED == src.base_addr[i]) {
-    //   while(i>=0){
-    //     /* Unmap all previous buffers in case of failure*/
-    //     i--;
-    //     munmap(src.base_addr[i], src.size);
-    //     src.base_addr[i] = NULL;
-    //   }
-    //   ERROR("Cant mmap buffers Y");
-    //   return false;
+  // src.base_addr = (unsigned int **) calloc(src.num_buffers, sizeof(unsigned int));
+  // src.v4l2buf = (struct v4l2_buffer *) calloc(src.num_buffers, \
+  //     sizeof(struct v4l2_buffer));
+  //
+  // for (int i = 0; i < src.num_buffers; i++) {
+  //   src.v4l2buf[i].type = src.type;
+  //   src.v4l2buf[i].memory = src.memory;
+  //   src.v4l2buf[i].length	= src.coplanar ? 2 : 1;
+  //   src.v4l2buf[i].index = i;
+  //
+  //   if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+  //     memset(&buf_planes, 0, sizeof buf_planes);
+  //     buf_planes[0].length = buf_planes[0].bytesused = src.size;
+  //     if(src.coplanar)
+  //       buf_planes[1].length = buf_planes[1].bytesused = src.size_uv;
+  //     buf_planes[0].data_offset = buf_planes[1].data_offset = 0;
+  //     src.v4l2buf[i].m.planes	= &buf_planes[0];
+  //   }
+  //
+  //   ret = ioctl(m_fd, VIDIOC_QUERYBUF, &src.v4l2buf[i]);
+  //   if (ret) {
+  //       ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+  //       return false;
+  //   }
+
+    // if (src.memory == V4L2_MEMORY_DMABUF) {
+    //   if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+    //     src.v4l2buf[i].m.planes[0].m.fd = fd[i];
+    //   else
+    //     src.v4l2buf[i].m.fd = fd[i];
+    //   // MSG("src.v4l2buf[%d].m.planes[0].m.fd set to %d", i, src.v4l2buf[i].m.planes[0].m.fd);
     // }
-  }
+    // else if (src.memory == V4L2_MEMORY_MMAP) {
+    //   src.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
+    //          MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+    //   if (MAP_FAILED == src.base_addr[i]) {
+    //     while(i>=0){
+    //       /* Unmap all previous buffers in case of failure*/
+    //       i--;
+    //       munmap(src.base_addr[i], src.size);
+    //       src.base_addr[i] = NULL;
+    //     }
+    //     ERROR("Cant mmap buffers Y");
+    //     return false;
+    //   }
+    // }
+    // }
 
 	return true;
 
@@ -190,7 +227,7 @@ bool VPEObj::vpe_output_init()
 	fmt.fmt.pix_mp.width = dst.width;
 	fmt.fmt.pix_mp.height = dst.height;
 	fmt.fmt.pix_mp.pixelformat = dst.fourcc;
-	fmt.fmt.pix_mp.field = dst.field;
+	fmt.fmt.pix_mp.field = m_field;
 	fmt.fmt.pix_mp.colorspace = dst.colorspace;
 	fmt.fmt.pix_mp.num_planes = dst.coplanar ? 2 : 1;
 
@@ -199,8 +236,8 @@ bool VPEObj::vpe_output_init()
 		ERROR( "%s: vpe o/p: S_FMT failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
-  src.size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
-  src.size_uv = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
+  dst.size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+  dst.size_uv = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
   MSG("size %d", fmt.fmt.pix_mp.plane_fmt[0].sizeimage);
   MSG("size_uv %d", fmt.fmt.pix_mp.plane_fmt[1].sizeimage);
 
@@ -226,23 +263,26 @@ bool VPEObj::vpe_output_init()
   }
 
 	dst.num_buffers = rqbufs.count;
-  dst.base_addr = (unsigned int **) calloc(dst.num_buffers, sizeof(unsigned int));
-  for (int i = 0; i < dst.num_buffers; i++) {
-      memset(&v4l2buf, 0, sizeof(v4l2buf));
-      v4l2buf.type = dst.type;
-      v4l2buf.memory = dst.memory;
-      v4l2buf.m.planes	= buf_planes;
-      v4l2buf.length	= dst.coplanar ? 2 : 1;
-      v4l2buf.index = i;
 
-      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
-      dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
-             MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+  if (dst.memory == V4L2_MEMORY_MMAP) {
+    dst.base_addr = (unsigned int **) calloc(dst.num_buffers, sizeof(unsigned int));
+    for (int i = 0; i < dst.num_buffers; i++) {
+        memset(&v4l2buf, 0, sizeof(v4l2buf));
+        v4l2buf.type = dst.type;
+        v4l2buf.memory = dst.memory;
+        v4l2buf.m.planes	= buf_planes;
+        v4l2buf.length	= dst.coplanar ? 2 : 1;
+        v4l2buf.index = i;
 
-      if (ret) {
-          ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-          return ret;
-      }
+        ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+        dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
+               MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+
+        if (ret) {
+            ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+            return ret;
+        }
+    }
   }
 
 	MSG("%s: vpe o/p: allocated buffers = %d\n", m_dev_name.c_str(), rqbufs.count);
@@ -257,55 +297,74 @@ bool VPEObj::vpe_output_init()
 	 * Here we saved to current value and restore it after we are done
 	 * allocating the buffers VPE will use for output.
 	 */
-/*
-	saved_multiplanar = disp->multiplanar;
-	disp->multiplanar = false;
-	disp_bufs = disp_get_vid_buffers(vpe->disp, NUMBUF, vpe->dst.fourcc,
-					      vpe->dst.width, vpe->dst.height);
-	vpe->disp->multiplanar = saved_multiplanar;
-	if (!vpe->disp_bufs)
-		ERROR("allocating display buffer failed\n");
 
-	for (i = 0; i < NUMBUF; i++) {
-		vpe->output_buf_dmafd[i] = omap_bo_dmabuf(vpe->disp_bufs[i]->bo[0]);
-		vpe->disp_bufs[i]->fd[0] = vpe->output_buf_dmafd[i];
+	// saved_multiplanar = disp->multiplanar;
+	// disp->multiplanar = false;
+	// disp_bufs = disp_get_vid_buffers(vpe->disp, NUMBUF, vpe->dst.fourcc,
+	// 				      vpe->dst.width, vpe->dst.height);
+	// vpe->disp->multiplanar = saved_multiplanar;
+	// if (!vpe->disp_bufs)
+	// 	ERROR("allocating display buffer failed\n");
+  //
+	// for (i = 0; i < NUMBUF; i++) {
+	// 	vpe->output_buf_dmafd[i] = omap_bo_dmabuf(vpe->disp_bufs[i]->bo[0]);
+	// 	vpe->disp_bufs[i]->fd[0] = vpe->output_buf_dmafd[i];
+  //
+	// 	if(vpe->dst.coplanar) {
+	// 		vpe->output_buf_dmafd_uv[i] = omap_bo_dmabuf(vpe->disp_bufs[i]->bo[1]);
+	// 		vpe->disp_bufs[i]->fd[1] = vpe->output_buf_dmafd_uv[i];
+	// 	}
+  //
+	// 	vpe->disp_bufs[i]->noScale = true;
+	// 	dprintf("vpe->disp_bufs_fd[%d] = %d\n", i, vpe->output_buf_dmafd[i]);
+	// }
 
-		if(vpe->dst.coplanar) {
-			vpe->output_buf_dmafd_uv[i] = omap_bo_dmabuf(vpe->disp_bufs[i]->bo[1]);
-			vpe->disp_bufs[i]->fd[1] = vpe->output_buf_dmafd_uv[i];
-		}
-
-		vpe->disp_bufs[i]->noScale = true;
-		dprintf("vpe->disp_bufs_fd[%d] = %d\n", i, vpe->output_buf_dmafd[i]);
-	}
-*/
 	//dprintf("allocating display buffer success\n");
 	return true;
 }
 
-bool VPEObj::input_qbuf(int fd){
-    struct v4l2_buffer * v4l2buf = NULL;
-  	int			ret = -1;
+bool VPEObj::input_qbuf(int fd, int index){
+  struct v4l2_buffer buf;
+	struct v4l2_plane planes[2];
 
-    for (int i = 0; i < src.num_buffers; i++) {
-      MSG("fd %d and src.fd %d", fd, src.v4l2buf[i].m.fd);
+	MSG("vpe: src QBUF (%d):%s field", m_field,
+		m_field==V4L2_FIELD_TOP?"top":"bottom");
 
-        if (src.v4l2buf[i].m.fd == fd) {
-            v4l2buf = &src.v4l2buf[i];
-        }
-    }
-    if (!v4l2buf) {
-      ERROR("invalid buffer");
+	memset(&buf, 0, sizeof buf);
+	memset(&planes, 0, sizeof planes);
+
+	buf.type = src.type;
+	buf.memory = src.memory;
+	buf.index = index;
+
+	buf.field = m_field;
+	if(src.coplanar)
+		buf.length = 2;
+	else
+		buf.length = 1;
+
+  if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+  	planes[0].length = planes[0].bytesused = src.size;
+  	if(src.coplanar)
+  		planes[1].length = planes[1].bytesused = src.size_uv;
+
+  	planes[0].data_offset = planes[1].data_offset = 0;
+    buf.m.planes = &planes[0];
+	  buf.m.planes[0].m.fd = fd;
+  }
+  else {
+    buf.m.fd = fd;
+  }
+  gettimeofday(&buf.timestamp, NULL);
+
+
+  MSG("index %d", buf.index);
+  int ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
+  if (ret) {
+      ERROR("VIDIOC_QBUF failed: %s (%d)", strerror(errno), ret);
       return false;
-    }
-
-    ret = ioctl(m_fd, VIDIOC_QBUF, v4l2buf);
-    if (ret) {
-        ERROR("VIDIOC_QBUF failed: %s (%d)", strerror(errno), ret);
-        return false;
-    }
-
-    return true;
+  }
+  return true;
 }
 
 bool VPEObj::output_qbuf(int index)

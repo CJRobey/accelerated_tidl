@@ -20,7 +20,6 @@ public:
   int type;
   int size_uv;
   bool coplanar;
-  int field;
   int memory;
   v4l2_format fmt;
   v4l2_colorspace colorspace;
@@ -33,6 +32,7 @@ class VPEObj {
 public:
   int m_fd;
   int m_deinterlace;
+  int m_field;
   ImageParams src;
   ImageParams dst;
 
@@ -46,7 +46,7 @@ public:
   int set_dst_format();
   bool vpe_input_init(int *fd);
   bool vpe_output_init();
-  bool input_qbuf(int fd);
+  bool input_qbuf(int fd, int index);
   bool output_qbuf(int index);
   bool stream_on(int layer);
   int stream_off();
@@ -57,7 +57,6 @@ public:
 private:
   bool set_ctrl();
   void default_parameters();
-  int m_field;
   std::string m_dev_name;
   int m_translen;
 };
@@ -73,11 +72,11 @@ public:
   ~VIPObj();
   int set_format();
   void device_init();
-  bool queue_buf(int fd);
+  bool queue_buf(int fd, int index);
   bool request_buf(int *fd);
   bool stream_on();
   int stream_off();
-  int dequeue_buf();
+  int dequeue_buf(VPEObj *vpe);
   int display_buffer(int index);
 
 private:
