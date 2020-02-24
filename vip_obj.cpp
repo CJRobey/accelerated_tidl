@@ -105,7 +105,8 @@ ERR:
 
 
 VIPObj::VIPObj(){
-  m_fd = 0;
+  default_parameters();
+  device_init();
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,

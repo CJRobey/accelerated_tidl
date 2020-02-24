@@ -43,7 +43,7 @@ void VPEObj::default_parameters(void) {
     src.colorspace = V4L2_COLORSPACE_SMPTE170M;
     src.memory = V4L2_MEMORY_DMABUF;
 
-    dst.fourcc = V4L2_PIX_FMT_RGB24;
+    dst.fourcc = V4L2_PIX_FMT_BGR24;
     dst.width = MODEL_WIDTH;
     dst.height = MODEL_HEIGHT;
     dst.size = dst.width * dst.height * 3;
@@ -390,10 +390,8 @@ bool VPEObj::stream_on(int layer){
 
 
 VPEObj::VPEObj(){
-  m_fd = 0;
-  m_deinterlace = 0;
-  m_field = 0;
-  m_num_buffers = 0;
+  default_parameters();
+  open_fd();
 }
 
 

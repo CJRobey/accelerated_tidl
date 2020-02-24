@@ -57,7 +57,8 @@ include ../make.common
 LIBS     += -lopencv_highgui -lopencv_imgcodecs -lopencv_videoio\
 			-lopencv_imgproc -lopencv_core -lticmem
 LIBS     += -ljson-c
-
+LIBS 		+= -ldrm -ldrm_omap
+INCLUDES := -I$(SDK_PATH_TARGET)/usr/include/omap -I$(SDK_PATH_TARGET)/usr/include/libdrm
 SOURCES = main.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp vip_obj.cpp vpe_obj.cpp cmem_buf.cpp capturevpedisplay.cpp
 
@@ -67,7 +68,7 @@ REALTIME_SOURCES = main-multithread.cpp ../common/object_classes.cpp ../common/u
 all: ssd_multibox ssd_multibox_realtime
 
 ssd_multibox: $(TIDL_API_LIB) $(HEADERS) $(SOURCES)
-	$(CXX) $(CXXFLAGS) $(SOURCES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(SOURCES) $(INCLUDES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@
 
 ssd_multibox_realtime: $(TIDL_API_LIB) $(HEADERS) $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(REALTIME_SOURCES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@

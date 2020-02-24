@@ -83,12 +83,22 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       float confidence_value);
 static void DisplayHelp();
 
+/***************************************************************/
+/* Slider to control detection confidence level                */
+/***************************************************************/
+static void on_trackbar( int slider_id, void *inst )
+{
+  //This function is invoked on every slider move.
+  //No action required, since prob_slider is automatically updated.
+  //But, for any additional operation on slider move, this is the place to insert code.
+}
 
 int main(int argc, char *argv[])
 {
     // Catch ctrl-c to ensure a clean exit
     signal(SIGABRT, exit);
     signal(SIGTERM, exit);
+
 
     // If there are no devices capable of offloading TIDL on the SoC, exit
     uint32_t num_eves = Executor::GetNumDevices(DeviceType::EVE);
@@ -143,6 +153,7 @@ int main(int argc, char *argv[])
 
 bool RunConfiguration(const cmdline_opts_t& opts)
 {
+    int prob_slider     = opts.output_prob_threshold;
     // Read the TI DL configuration file
     Configuration c;
     std::string config_file = "../test/testvecs/config/infer/tidl_config_"
@@ -157,7 +168,16 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     if (opts.num_eves == 0 || opts.num_dsps == 0)
         c.runFullNet = true;
 
-    CamDisp cam(800, 600, c.inWidth, c.inHeight);
+    namedWindow("SSD_Multibox", WINDOW_AUTOSIZE | CV_GUI_NORMAL);
+    if (opts.is_camera_input || opts.is_video_input)
+    {
+        std::string TrackbarName("Confidence(%):");
+        createTrackbar( TrackbarName.c_str(), "SSD_Multibox",
+                        &prob_slider, 100, on_trackbar );
+        std::cout << TrackbarName << std::endl;
+    }
+    MSG("Initialize");
+    CamDisp cam(800, 600, 768, 320);
     cam.init_capture_pipeline();
 
     // setup preprocessed input
@@ -181,9 +201,10 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         // EVE will run layersGroupId 1 in the network, while
         // DSP will run layersGroupId 2 in the network
         Executor* e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c, 1);
+        MSG("Executor of EVE created");
         Executor* e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c, 2);
         vector<ExecutionObjectPipeline *> eops;
-
+        MSG("Executor of DSP created");
         if (e_eve != nullptr && e_dsp != nullptr)
         {
             // Construct ExecutionObjectPipeline that utilizes multiple
@@ -260,7 +281,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         uint32_t num_eops = eops.size();
 
         // Allocate input/output memory for each EOP
-        AllocateMemory(eops);
+        // AllocateMemory(eops);
 
         chrono::time_point<chrono::steady_clock> tloop0, tloop1;
         tloop0 = chrono::steady_clock::now();
@@ -274,7 +295,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait())
-                printf("eop finished\n");
+                WriteFrameOutput(*eop, c, opts, (float)prob_slider);
 
             // Read a frame and start processing it with current eo
             if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs))
@@ -324,14 +345,107 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
         return false;
 
     eop.SetFrameIndex(frame_idx);
-
+    void* in_ptr = cap.grab_image();
+    MSG("in_ptr %x", (unsigned int) in_ptr);
+    ArgInfo in = {ArgInfo(in_ptr, 768*320*3)};
+    void* out_ptr = eop.GetOutputBufferPtr();
+    if (out_ptr == nullptr) {
+      out_ptr = malloc(eop.GetOutputBufferSizeInBytes());
+    }
+    ArgInfo out = {ArgInfo(out_ptr, eop.GetOutputBufferSizeInBytes())};
+    eop.SetInputOutputBuffer(in, out);
     char*  frame_buffer = eop.GetInputBufferPtr();
     assert (frame_buffer != nullptr);
-    int channel_size = c.inWidth * c.inHeight;
-    char *bgr_frames = (char *) cap.grab_image();
-    memcpy(frame_buffer,                bgr_frames, channel_size);
-    memcpy(frame_buffer+1*channel_size, bgr_frames+channel_size, channel_size);
-    memcpy(frame_buffer+2*channel_size, bgr_frames+(2*channel_size), channel_size);
+    return true;
+}
+
+// Create frame with boxes drawn around classified objects
+bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
+                      const Configuration& c, const cmdline_opts_t& opts, float confidence_value)
+{
+    // Asseembly original frame
+    int width  = c.inWidth;
+    int height = c.inHeight;
+    int channel_size = width * height;
+    Mat frame, bgr[3];
+
+    unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
+    bgr[0] = Mat(height, width, CV_8UC(1), in);
+    bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
+    bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
+    cv::merge(bgr, 3, frame);
+
+    int frame_index = eop.GetFrameIndex();
+    char outfile_name[64];
+    if (opts.is_preprocessed_input)
+    {
+        snprintf(outfile_name, 64, "frame_%d.png", frame_index);
+        cv::imwrite(outfile_name, frame);
+        printf("Saving frame %d to: %s\n", frame_index, outfile_name);
+    }
+
+    // Draw boxes around classified objects
+    float *out = (float *) eop.GetOutputBufferPtr();
+    int num_floats = eop.GetOutputBufferSizeInBytes() / sizeof(float);
+    for (int i = 0; i < num_floats / 7; i++)
+    {
+        int index = (int)    out[i * 7 + 0];
+        if (index < 0)  break;
+
+        float score =        out[i * 7 + 2];
+        if (score * 100 < confidence_value)  continue;
+
+        int   label = (int)  out[i * 7 + 1];
+        int   xmin  = (int) (out[i * 7 + 3] * width);
+        int   ymin  = (int) (out[i * 7 + 4] * height);
+        int   xmax  = (int) (out[i * 7 + 5] * width);
+        int   ymax  = (int) (out[i * 7 + 6] * height);
+
+        const ObjectClass& object_class = object_classes->At(label);
+
+        if(opts.verbose) {
+            printf("%2d: (%d, %d) -> (%d, %d): %s, score=%f\n",
+               i, xmin, ymin, xmax, ymax, object_class.label.c_str(), score);
+        }
+
+        if (xmin < 0)       xmin = 0;
+        if (ymin < 0)       ymin = 0;
+        if (xmax > width)   xmax = width;
+        if (ymax > height)  ymax = height;
+        cv::rectangle(frame, Point(xmin, ymin), Point(xmax, ymax),
+                      Scalar(object_class.color.blue,
+                             object_class.color.green,
+                             object_class.color.red), 2);
+    }
+
+    if (opts.is_camera_input || opts.is_video_input)
+    {
+        cv::imshow("SSD_Multibox", frame);
+#ifdef DEBUG_FILES
+        // Image files can be converted into video using, example script
+        // (on desktop Ubuntu, with ffmpeg installed):
+        // ffmpeg -i multibox_%04d.png -vf "scale=(iw*sar)*max(768/(iw*sar)\,320/ih):ih*max(768/(iw*sar)\,320/ih), crop=768:320" -b:v 4000k out.mp4
+        // Update width 768, height 320, if necessary
+        snprintf(outfile_name, 64, "multibox_%04d.png", frame_index);
+        cv::imwrite(outfile_name, r_frame);
+#endif
+        waitKey(1);
+    }
+    else
+    {
+        // Resize to output width/height, keep aspect ratio
+        Mat r_frame;
+        uint32_t output_width = opts.output_width;
+        if (output_width == 0)  output_width = orig_width;
+        uint32_t output_height = (output_width*1.0f) / orig_width * orig_height;
+        cv::resize(frame, r_frame, Size(output_width, output_height));
+
+        snprintf(outfile_name, 64, "multibox_%d.png", frame_index);
+        cv::imwrite(outfile_name, frame);
+        printf("Saving frame %d with SSD multiboxes to: %s\n",
+               frame_index, outfile_name);
+    }
+
     return true;
 }
 

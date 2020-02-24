@@ -32,6 +32,13 @@
 *
 */
 
+extern "C" {
+  #include <omap_drm.h>
+  #include <omap_drmif.h>
+  #include <xf86drmMode.h>
+  #include <linux/dma-buf.h>
+}
+
 #ifndef CMEM_BUF_H
 #define CMEM_BUF_H
 
@@ -52,6 +59,7 @@ public:
 
     int *m_fd;
     uint32_t *m_fb_id;
+    struct omap_bo **bo;
     void **m_buf;
 
 private:
