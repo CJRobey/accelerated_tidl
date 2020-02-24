@@ -33,12 +33,13 @@ public:
   int m_fd;
   int m_deinterlace;
   int m_field;
+  int m_num_buffers;
   ImageParams src;
   ImageParams dst;
 
   VPEObj();
-  VPEObj(std::string * dev_name, int w, int h, int pix_fmt, int num_buf,
-    int type);
+  VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
+    int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers);
   ~VPEObj();
   bool open_fd(void);
   void vpe_close();

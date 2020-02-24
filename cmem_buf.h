@@ -39,6 +39,7 @@ class BufObj {
 public:
     BufObj(unsigned int w, unsigned int h, unsigned int bpp,
       unsigned int fourcc, unsigned int align, unsigned int num_bufs);
+    BufObj();
     ~BufObj();
 
     //If applications wants to do cache operations on buffer
