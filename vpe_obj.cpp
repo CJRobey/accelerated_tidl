@@ -156,7 +156,7 @@ bool VPEObj::vpe_input_init(int *fd)
 		ERROR( "%s: vpe i/p: REQBUFS failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
-	m_num_buffers = rqbufs.count;
+	src.num_buffers = rqbufs.count;
 
 	return true;
 
@@ -210,7 +210,7 @@ bool VPEObj::vpe_output_init()
     return false;
   }
 
-	m_num_buffers = rqbufs.count;
+	dst.num_buffers = rqbufs.count;
 
   if (dst.memory == V4L2_MEMORY_MMAP) {
     dst.base_addr = (unsigned int **) calloc(m_num_buffers, sizeof(unsigned int));
