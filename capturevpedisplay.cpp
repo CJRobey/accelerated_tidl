@@ -180,3 +180,9 @@ void CamDisp::init_vpe_stream() {
   count ++;
   }
 }
+
+void CamDisp::turn_off() {
+  vip.stream_off();
+  vpe.stream_off(1);
+  vpe.stream_off(0);
+}

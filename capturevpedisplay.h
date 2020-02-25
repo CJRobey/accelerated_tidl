@@ -39,5 +39,6 @@ public:
   bool init_capture_pipeline();
   void *grab_image();
   void init_vpe_stream();
+  void turn_off();
 
 };

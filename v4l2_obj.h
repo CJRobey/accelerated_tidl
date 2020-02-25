@@ -50,7 +50,7 @@ public:
   bool input_qbuf(int fd, int index);
   bool output_qbuf(int index);
   bool stream_on(int layer);
-  int stream_off();
+  bool stream_off(int layer);
   int input_dqbuf();
   int output_dqbuf();
   int display_buffer(int index);
