@@ -131,7 +131,7 @@ VIPObj::~VIPObj(){
 /* In this example appliaction, user space allocates the buffers and
  * provides the buffer fd to be exported to the V4L2 driver
 */
-bool VIPObj::request_buf(int *fd){
+bool VIPObj::request_buf(){
     struct v4l2_requestbuffers reqbuf;
     int ret;
 

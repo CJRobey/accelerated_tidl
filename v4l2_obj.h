@@ -74,7 +74,7 @@ public:
   int set_format();
   void device_init();
   bool queue_buf(int fd, int index);
-  bool request_buf(int *fd);
+  bool request_buf();
   bool stream_on();
   int stream_off();
   int dequeue_buf(VPEObj *vpe);
