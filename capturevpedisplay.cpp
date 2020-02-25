@@ -73,16 +73,18 @@ bool CamDisp::init_capture_pipeline() {
     drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
 
     struct omap_device *dev = omap_device_new(alloc_fd);
-
-    bo_vpe_in.m_fd = (int *) calloc(vip.src.num_buffers, sizeof(int));
-    bo_vpe_in.bo = (struct omap_bo **) calloc(vip.src.num_buffers, sizeof(struct omap_bo *));
+    bo_vpe_in.buf = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
     for (int i = 0; i < vip.src.num_buffers; i++) {
-    		bo_vpe_in.bo[i] = omap_bo_new(dev, vpe_in_w*vpe_in_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
-        bo_vpe_in.m_fd[i] = omap_bo_dmabuf(bo_vpe_in.bo[i]);
+        MSG("i %d, buf[i] = 0x%x", i, (unsigned int) &bo_vpe_in.buf[i]);
+        bo_vpe_in.buf[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
+        MSG("buffer object space alloc");
+    		bo_vpe_in.buf[i].bo[0] = omap_bo_new(dev, vpe_in_w*vpe_in_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+        MSG("Space allocated");
+        bo_vpe_in.buf[i].fd[0] = omap_bo_dmabuf(bo_vpe_in.buf[i].bo[0]);
     }
   }
 
-  if(!vip.request_buf(bo_vpe_in.m_fd)) {
+  if(!vip.request_buf()) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
@@ -101,7 +103,7 @@ bool CamDisp::init_capture_pipeline() {
   MSG("Output layer initialization done\n");
 
   for (int i=0; i < NBUF; i++) {
-    if(!vip.queue_buf(bo_vpe_in.m_fd[i], i)) {
+    if(!vip.queue_buf(bo_vpe_in.buf[i].fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
@@ -134,14 +136,14 @@ void *CamDisp::grab_image() {
     if (stop_after_one) {
       vpe.output_qbuf(frame_num);
       frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in.m_fd[frame_num], frame_num);
+      vip.queue_buf(bo_vpe_in.buf[frame_num].fd[0], frame_num);
     }
 
     /* dequeue the vip */
     frame_num = vip.dequeue_buf(&vpe);
 
     /* queue that frame onto the vpe */
-    if (!vpe.input_qbuf(bo_vpe_in.m_fd[frame_num], frame_num)) {
+    if (!vpe.input_qbuf(bo_vpe_in.buf[frame_num].fd[0], frame_num)) {
       ERROR("vpe input queue buffer failed");
       return NULL;
     }

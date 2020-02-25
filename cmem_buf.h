@@ -42,6 +42,17 @@ extern "C" {
 #ifndef CMEM_BUF_H
 #define CMEM_BUF_H
 
+
+struct dmabuf_buffer {
+	uint32_t fourcc, width, height;
+	int nbo;
+	void *cmem_buf;
+	struct omap_bo **bo;
+	uint32_t pitches[4];
+	int fd[4];		/* dmabuf */
+	unsigned fb_id;
+};
+
 class BufObj {
 public:
     BufObj(unsigned int w, unsigned int h, unsigned int bpp,
@@ -59,7 +70,7 @@ public:
 
     int *m_fd;
     uint32_t *m_fb_id;
-    struct omap_bo **bo;
+    struct dmabuf_buffer *buf;
     void **m_buf;
 
 private:
