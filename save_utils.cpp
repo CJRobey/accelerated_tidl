@@ -60,29 +60,28 @@ void save_data(void *img_data, int w, int h, const int out_channels=4, const int
 
   for (int fmt=0;fmt<num_in_fmts;fmt++) {
 
-    switch(SUM_CHAR_STR(in_fmts[fmt])) {
-      case SUM_CHAR_STR("byte"):
-	cnt=0;
-	// Assumption here is that bytes are in order A->1byte, R->1bye, G->1byte, B->1byte, repeat...
-	for (int i=0; i<w*h*in_channels;i++) {
-	  argb[fmt][i%in_channels][cnt] = ((char *)img_data)[i];
-	  if (i%in_channels == 0 && i > 0)
-	    cnt++;
-	}
-	break;
-      case SUM_CHAR_STR("frame"):
-
-	cnt=0;
-	// Assumption here is that bytes are frame by frame A->1frame, R->1frame, G->1frame, B->1frame, done...
-	for (int i=0; i<w*h*in_channels;i++) {
-	  argb[fmt][cnt][i%w*h] = ((char *)img_data)[i];
-	  if ((i%(w*h) == 0) && (i > 0))
-	    cnt++;
-	}
-	break;
-      case SUM_CHAR_STR("opencv-default"):
-	cv::split(src, out[fmt]);
-	continue;
+  switch(SUM_CHAR_STR(in_fmts[fmt])) {
+    case SUM_CHAR_STR("byte"):
+    	cnt=0;
+    	// Assumption here is that bytes are in order A->1byte, R->1bye, G->1byte, B->1byte, repeat...
+    	for (int i=0; i<w*h*in_channels;i++) {
+    	  argb[fmt][i%in_channels][cnt] = ((char *)img_data)[i];
+    	  if (i%in_channels == 0 && i > 0)
+    	    cnt++;
+    	}
+    	break;
+    case SUM_CHAR_STR("frame"):
+    	cnt=0;
+    	// Assumption here is that bytes are frame by frame A->1frame, R->1frame, G->1frame, B->1frame, done...
+    	for (int i=0; i<w*h*in_channels;i++) {
+    	  argb[fmt][cnt][i%w*h] = ((char *)img_data)[i];
+    	  if ((i%(w*h) == 0) && (i > 0))
+    	    cnt++;
+    	}
+    	break;
+    case SUM_CHAR_STR("opencv-default"):
+    	cv::split(src, out[fmt]);
+    	continue;
     }
     for (int k=0;k<in_channels;k++)
       out[fmt][k] = cv::Mat(cvSize(w, h), CV_8UC1, argb[fmt][k]);
