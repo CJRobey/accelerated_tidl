@@ -143,6 +143,11 @@ BufObj::BufObj(unsigned int w, unsigned int h, unsigned int bpp,
     }
 }
 
+BufObj::BufObj() {
+  m_fd = NULL;
+  m_buf = NULL;
+  m_fb_id = NULL;
+}
 
 BufObj::~BufObj(){
 

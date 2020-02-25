@@ -33,8 +33,26 @@
 */
 #include <xf86drmMode.h>
 
+extern "C" {
+  #include <omap_drm.h>
+  #include <omap_drmif.h>
+  #include <xf86drmMode.h>
+  #include <linux/dma-buf.h>
+}
+
 #ifndef CMEM_BUF_H
 #define CMEM_BUF_H
+
+
+struct dmabuf_buffer {
+	uint32_t fourcc, width, height;
+	int nbo;
+	void *cmem_buf;
+	struct omap_bo **bo;
+	uint32_t pitches[4];
+	int fd[4];		/* dmabuf */
+	unsigned fb_id;
+};
 
 class BufObj {
 public:
@@ -43,6 +61,7 @@ public:
     BufObj(unsigned int w, unsigned int h, unsigned int bpp,
       unsigned int fourcc, unsigned int align, unsigned int num_bufs,
       bool use_cmem);
+    BufObj();
     ~BufObj();
 
     //If applications wants to do cache operations on buffer
@@ -57,6 +76,7 @@ public:
 
     int *m_fd;
     uint32_t *m_fb_id;
+    struct dmabuf_buffer *buf;
     void **m_buf;
 
 private:

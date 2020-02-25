@@ -12,12 +12,11 @@
 #include "v4l2_obj.h"
 #include "error.h"
 
-#define NBUF (3)
 #define CAP_WIDTH 800
 #define CAP_HEIGHT 600
 
 #define MODEL_WIDTH 768
-#define MODEL_HEIGHT 332
+#define MODEL_HEIGHT 320
 
 /*
 * Initialize the app resources with default parameters
@@ -105,8 +104,8 @@ ERR:
 
 
 VIPObj::VIPObj(){
-    default_parameters();
-    device_init();
+  default_parameters();
+  device_init();
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
@@ -131,7 +130,7 @@ VIPObj::~VIPObj(){
 /* In this example appliaction, user space allocates the buffers and
  * provides the buffer fd to be exported to the V4L2 driver
 */
-bool VIPObj::request_buf(int *fd){
+bool VIPObj::request_buf(){
     struct v4l2_requestbuffers reqbuf;
     int ret;
 
@@ -146,28 +145,6 @@ bool VIPObj::request_buf(int *fd){
     }
 
     src.num_buffers = reqbuf.count;
-    // src.base_addr = (unsigned int **) calloc(src.num_buffers, sizeof(unsigned int));
-    // src.v4l2buf = (struct v4l2_buffer *) calloc(src.num_buffers, \
-    //     sizeof(struct v4l2_buffer));
-    // if (!src.v4l2buf) {
-    //     ERROR("allocation failed");
-    //     return -1;
-    // }
-    //
-    // for (int i = 0; i < src.num_buffers; i++) {
-    //     src.v4l2buf[i].type = src.type;
-    //     src.v4l2buf[i].memory = src.memory;
-    //     src.v4l2buf[i].length	= src.coplanar ? 2 : 1;
-    //     src.v4l2buf[i].index = i;
-    //
-    //     ret = ioctl(m_fd, VIDIOC_QUERYBUF, &src.v4l2buf[i]);
-    //
-    //     if (ret) {
-    //         ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-    //         return false;
-    //     }
-    //     src.v4l2buf[i].m.fd = fd[i];
-    // }
 
     return true;
 }
@@ -179,15 +156,6 @@ bool VIPObj::queue_buf(int fd, int index){
     struct v4l2_buffer buf;
   	int			ret = -1;
 
-    // for (int i = 0; i < src.num_buffers; i++) {
-    //     if (src.v4l2buf[i].m.fd == fd) {
-    //         v4l2buf = &src.v4l2buf[i];
-    //     }
-    // }
-    // if (!v4l2buf) {
-    //   ERROR("invalid buffer");
-    //   return -1;
-    // }
     memset(&buf, 0, sizeof buf);
   	buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   	buf.memory = V4L2_MEMORY_DMABUF;

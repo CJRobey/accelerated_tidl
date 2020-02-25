@@ -8,7 +8,7 @@
 #define CAP_HEIGHT 600
 
 #define MODEL_WIDTH 768
-#define MODEL_HEIGHT 332
+#define MODEL_HEIGHT 320
 
 class ImageParams {
 public:
@@ -33,12 +33,13 @@ public:
   int m_fd;
   int m_deinterlace;
   int m_field;
+  int m_num_buffers;
   ImageParams src;
   ImageParams dst;
 
   VPEObj();
-  VPEObj(std::string * dev_name, int w, int h, int pix_fmt, int num_buf,
-    int type);
+  VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
+    int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers);
   ~VPEObj();
   bool open_fd(void);
   void vpe_close();
@@ -73,7 +74,7 @@ public:
   int set_format();
   void device_init();
   bool queue_buf(int fd, int index);
-  bool request_buf(int *fd);
+  bool request_buf();
   bool stream_on();
   int stream_off();
   int dequeue_buf(VPEObj *vpe);
