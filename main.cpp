@@ -308,7 +308,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
               eop->ProcessFrameStartAsync();
             }
         }
-
+        cam.turn_off();
         tloop1 = chrono::steady_clock::now();
         chrono::duration<float> elapsed = tloop1 - tloop0;
         cout << "Loop total time (including read/write/opencv/print/etc): "
