@@ -8,7 +8,7 @@
 #define CAP_HEIGHT 600
 
 #define MODEL_WIDTH 768
-#define MODEL_HEIGHT 332
+#define MODEL_HEIGHT 320
 
 class ImageParams {
 public:

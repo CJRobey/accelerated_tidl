@@ -50,10 +50,12 @@
 #include "../common/object_classes.h"
 #include "../common/utils.h"
 #include "../common/video_utils.h"
+#include "save_utils.h"
 
 using namespace std;
 using namespace tidl;
 using namespace cv;
+using namespace chrono;
 
 
 #define NUM_VIDEO_FRAMES  100
@@ -176,7 +178,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
                         &prob_slider, 100, on_trackbar );
         std::cout << TrackbarName << std::endl;
     }
-    MSG("Initialize");
+
     CamDisp cam(800, 600, 768, 320);
     cam.init_capture_pipeline();
 
@@ -298,8 +300,13 @@ bool RunConfiguration(const cmdline_opts_t& opts)
                 WriteFrameOutput(*eop, c, opts, (float)prob_slider);
 
             // Read a frame and start processing it with current eo
-            if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs))
-                eop->ProcessFrameStartAsync();
+            auto rdStart = high_resolution_clock::now();
+            if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs)) {
+              auto rdStop = high_resolution_clock::now();
+              auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
+              cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
+              eop->ProcessFrameStartAsync();
+            }
         }
 
         tloop1 = chrono::steady_clock::now();
@@ -346,7 +353,6 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 
     eop.SetFrameIndex(frame_idx);
     void* in_ptr = cap.grab_image();
-    MSG("in_ptr %x", (unsigned int) in_ptr);
     ArgInfo in = {ArgInfo(in_ptr, 768*320*3)};
     void* out_ptr = eop.GetOutputBufferPtr();
     if (out_ptr == nullptr) {
@@ -366,14 +372,11 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
     // Asseembly original frame
     int width  = c.inWidth;
     int height = c.inHeight;
-    int channel_size = width * height;
-    Mat frame, bgr[3];
+    //int channel_size = width * height;
+    Mat frame;
 
     unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
-    bgr[0] = Mat(height, width, CV_8UC(1), in);
-    bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
-    bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
-    cv::merge(bgr, 3, frame);
+    frame = Mat(cvSize(width, height), CV_8UC3, in);
 
     int frame_index = eop.GetFrameIndex();
     char outfile_name[64];
