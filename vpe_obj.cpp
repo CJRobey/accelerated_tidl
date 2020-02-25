@@ -215,21 +215,21 @@ bool VPEObj::vpe_output_init()
   if (dst.memory == V4L2_MEMORY_MMAP) {
     dst.base_addr = (unsigned int **) calloc(m_num_buffers, sizeof(unsigned int));
     for (int i = 0; i < m_num_buffers; i++) {
-        memset(&v4l2buf, 0, sizeof(v4l2buf));
-        v4l2buf.type = dst.type;
-        v4l2buf.memory = dst.memory;
-        v4l2buf.m.planes	= buf_planes;
-        v4l2buf.length	= dst.coplanar ? 2 : 1;
-        v4l2buf.index = i;
+      memset(&v4l2buf, 0, sizeof(v4l2buf));
+      v4l2buf.type = dst.type;
+      v4l2buf.memory = dst.memory;
+      v4l2buf.m.planes	= buf_planes;
+      v4l2buf.length	= dst.coplanar ? 2 : 1;
+      v4l2buf.index = i;
 
-        ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
-        dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
-               MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+      dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
+             MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
 
-        if (ret) {
-            ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-            return ret;
-        }
+      if (ret) {
+          ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+          return ret;
+      }
     }
   }
 
