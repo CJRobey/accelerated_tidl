@@ -352,8 +352,26 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
         return false;
 
     eop.SetFrameIndex(frame_idx);
-    void* in_ptr = cap.grab_image();
-    ArgInfo in = {ArgInfo(in_ptr, 768*320*3)};
+    char *in_ptr = (char *) cap.grab_image();
+    int channel_size = 768*320;
+    char *input_data = (char *)malloc(channel_size*3);
+
+    /* Less efficient method */
+    // for (int i = 0; i < channel_size; i++) {
+    //   input_data[i] = in_ptr[i];
+    //   input_data[i+channel_size] = in_ptr[channel_size+i];
+    //   input_data[i+(2*channel_size)] = in_ptr[(2*channel_size)+i];
+    // }
+
+    /* More efficient method */
+    Mat pic(cvSize(768, 320), CV_8UC3, in_ptr);
+    Mat channels[3];
+    split(pic, channels);
+    memcpy(input_data, channels[0].ptr(), channel_size);
+    memcpy(input_data+channel_size, channels[1].ptr(), channel_size);
+    memcpy(input_data+(2*channel_size), channels[2].ptr(), channel_size);
+
+    ArgInfo in = {ArgInfo(input_data, 768*320*3)};
     void* out_ptr = eop.GetOutputBufferPtr();
     if (out_ptr == nullptr) {
       out_ptr = malloc(eop.GetOutputBufferSizeInBytes());
@@ -369,14 +387,17 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts, float confidence_value)
 {
-    // Asseembly original frame
+    // Asseemble original frame
     int width  = c.inWidth;
     int height = c.inHeight;
-    //int channel_size = width * height;
-    Mat frame;
+    int channel_size = width * height;
+    Mat frame, bgr[3];
 
     unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
-    frame = Mat(cvSize(width, height), CV_8UC3, in);
+    bgr[0] = Mat(height, width, CV_8UC(1), in);
+    bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
+    bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
+    cv::merge(bgr, 3, frame);
 
     int frame_index = eop.GetFrameIndex();
     char outfile_name[64];
