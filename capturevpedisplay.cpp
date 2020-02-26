@@ -181,7 +181,6 @@ void CamDisp::turn_off() {
   vpe.stream_off(0);
 }
 
-
 /* Testing functionality: To use this, just type "make test" and then run
  * ./test - Make sure to uncomment this section beforehand if not already
  * done.
