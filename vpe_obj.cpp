@@ -44,8 +44,8 @@ void VPEObj::default_parameters(void) {
     src.memory = V4L2_MEMORY_DMABUF;
 
     dst.fourcc = V4L2_PIX_FMT_BGR24;
-    dst.width = MODEL_WIDTH;
-    dst.height = MODEL_HEIGHT;
+    dst.width = TIDL_MODEL_WIDTH;
+    dst.height = TIDL_MODEL_HEIGHT;
     dst.size = dst.width * dst.height * 3;
     dst.v4l2buf = NULL;
     // CAPTURE is the output buffer of the VPE
@@ -82,13 +82,13 @@ bool VPEObj::set_ctrl()
 	ctrl.value = m_translen;
 	ret = ioctl(m_fd, VIDIOC_S_CTRL, &ctrl);
 	if (ret < 0) {
-		ERROR("vpe: S_CTRL failed\n");
+		ERROR("%s: vpe: S_CTRL failed with error %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
 	return true;
 }
 
-bool VPEObj::vpe_input_init(int *fd)
+bool VPEObj::vpe_input_init()
 {
 	int ret;
 	struct v4l2_requestbuffers rqbufs;
@@ -242,9 +242,6 @@ bool VPEObj::input_qbuf(int fd, int index){
   struct v4l2_buffer buf;
 	struct v4l2_plane planes[2];
 
-	MSG("vpe: src QBUF (%d):%s field", m_field,
-		m_field==V4L2_FIELD_TOP?"top":"bottom");
-
 	memset(&buf, 0, sizeof buf);
 	memset(&planes, 0, sizeof planes);
 
@@ -272,8 +269,6 @@ bool VPEObj::input_qbuf(int fd, int index){
   }
   gettimeofday(&buf.timestamp, NULL);
 
-
-  MSG("index %d", buf.index);
   int ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
   if (ret) {
       ERROR("VIDIOC_QBUF failed: %s (%d)", strerror(errno), ret);
@@ -374,7 +369,7 @@ bool VPEObj::stream_on(int layer){
   }
   else if (layer == 0) {
     type = (v4l2_buf_type) src.type;
-    MSG("Streaming VPE Intput");
+    MSG("Streaming VPE Input");
   }
 
   ret = ioctl(m_fd, VIDIOC_STREAMON, &type);
@@ -400,7 +395,7 @@ bool VPEObj::stream_off(int layer){
   }
   else if (layer == 0) {
     type = (v4l2_buf_type) src.type;
-    MSG("Disable Streaming VPE Intput");
+    MSG("Disable Streaming VPE Input");
   }
 
   ret = ioctl(m_fd, VIDIOC_STREAMOFF, &type);
@@ -413,17 +408,15 @@ bool VPEObj::stream_off(int layer){
   return true;
 }
 
-
-
 VPEObj::VPEObj(){
   default_parameters();
-  open_fd();
 }
 
 
 VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
-  int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers) {
-
+  int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc,
+  int num_buffers)
+{
   default_parameters();
   m_num_buffers = num_buffers;
 

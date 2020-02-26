@@ -68,13 +68,18 @@ TST_SRC = disp_obj.cpp cmem_buf.cpp vpe_obj.cpp vip_obj.cpp
 REALTIME_SOURCES = main-multithread.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp
 
+TEST_SOURCES = vip_obj.cpp vpe_obj.cpp cmem_buf.cpp capturevpedisplay.cpp
+
 all: ssd_multibox ssd_multibox_realtime
 
 ssd_multibox: $(TIDL_API_LIB) $(HEADERS) $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(SOURCES) $(INCLUDES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@
 
-test: $(TST_SRC)
+test-disp: $(TST_SRC)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LDFLAGS) $(LIBS) $(TST_SRC) -o $@
+
+test-vpe: $(TEST_SOURCES)
+	$(CXX) $(CXXFLAGS) $(TEST_SOURCES) $(INCLUDES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@
 
 ssd_multibox_realtime: $(TIDL_API_LIB) $(HEADERS) $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(REALTIME_SOURCES) $(TIDL_API_LIB) $(LDFLAGS) $(LIBS) -o $@

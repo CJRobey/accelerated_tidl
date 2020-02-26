@@ -179,7 +179,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         std::cout << TrackbarName << std::endl;
     }
 
-    CamDisp cam(800, 600, 768, 320);
+    CamDisp cam(800, 600, c.inWidth, c.inHeight);
     cam.init_capture_pipeline();
 
     // setup preprocessed input

@@ -13,7 +13,6 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "v4l2_obj.h"
-#include "cmem_buf.h"
 
 #include "save_utils.h"
 
@@ -22,11 +21,23 @@
     ((uint32_t)(uint8_t)(d) << 24 ))
 #define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
 
+
+struct dmabuf_buffer {
+	uint32_t fourcc, width, height;
+	int nbo;
+	void *cmem_buf;
+	struct omap_bo **bo;
+	uint32_t pitches[4];
+	int fd[4];		/* dmabuf */
+	unsigned fb_id;
+};
+
+
 class CamDisp {
 public:
   VIPObj vip;
   VPEObj vpe;
-  BufObj bo_vpe_in;
+  struct dmabuf_buffer *bo_vpe_in;
   int frame_num;
   int src_w;
   int src_h;

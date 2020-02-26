@@ -7,8 +7,8 @@
 #define CAP_WIDTH 800
 #define CAP_HEIGHT 600
 
-#define MODEL_WIDTH 768
-#define MODEL_HEIGHT 320
+#define TIDL_MODEL_WIDTH 768
+#define TIDL_MODEL_HEIGHT 320
 
 class ImageParams {
 public:
@@ -45,7 +45,7 @@ public:
   void vpe_close();
   int set_src_format();
   int set_dst_format();
-  bool vpe_input_init(int *fd);
+  bool vpe_input_init();
   bool vpe_output_init();
   bool input_qbuf(int fd, int index);
   bool output_qbuf(int index);

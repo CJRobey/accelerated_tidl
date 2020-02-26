@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <algorithm>
+#include <chrono>
 #include "error.h"
 
 #include <linux/videodev2.h>
@@ -20,6 +21,8 @@ extern "C" {
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "capturevpedisplay.h"
+using namespace std;
+using namespace chrono;
 
 #define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
     ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
@@ -28,14 +31,14 @@ extern "C" {
 
 
 CamDisp::CamDisp() {
-  MSG("Do Nothing");
-  /*src_w = CAP_WIDTH;
+  /* The VIP and VPE default constructors will be called since they are member
+   * variables
+   */
+  src_w = CAP_WIDTH;
   src_h = CAP_HEIGHT;
-  dst_w = MODEL_WIDTH;
-  dst_h = MODEL_HEIGHT;
-  // request vip buffers that point to the input buffer of the vpe
-  bo_vpe_in = BufObj(src_w, src_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
-  frame_num = 0;*/
+  dst_w = TIDL_MODEL_WIDTH;
+  dst_h = TIDL_MODEL_HEIGHT;
+  frame_num = 0;
 }
 
 
@@ -45,43 +48,34 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
   dst_w = _dst_w;
   dst_h = _dst_h;
 
-  //vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-  //vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_RGB24, 3);
+  vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
 
-  // request vip buffers that point to the input buffer of the vpe
-  bo_vpe_in = BufObj(src_w, src_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
   frame_num = 0;
 }
 
 
 bool CamDisp::init_capture_pipeline() {
 
-  MSG("Opening vpe");
-  int vpe_in_w = CAP_WIDTH;
-  int vpe_in_h = CAP_HEIGHT;
+  vip.device_init();
+  vpe.open_fd();
 
-  // request vip buffers that point to the input buffer of the vpe
-  //BufObj bo_vpe_out(vpe_out_w, vpe_out_h, 3, FOURCC_STR("RGB3"), 1, NBUF);
-  bool cmem = false;
+  // Grab the omapdrm file descriptor
+  int alloc_fd = drmOpen("omapdrm", NULL);
+  // Configure the capture device
+  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
 
-  if (cmem)
-    BufObj bo_vpe_in(vpe_in_w, vpe_in_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
-  else {
-    MSG("You can't even make tests...");
-    int alloc_fd = drmOpen("omapdrm", NULL);
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
-
-    struct omap_device *dev = omap_device_new(alloc_fd);
-    bo_vpe_in.buf = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
-    for (int i = 0; i < vip.src.num_buffers; i++) {
-        MSG("i %d, buf[i] = 0x%x", i, (unsigned int) &bo_vpe_in.buf[i]);
-        bo_vpe_in.buf[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
-        MSG("buffer object space alloc");
-    		bo_vpe_in.buf[i].bo[0] = omap_bo_new(dev, vpe_in_w*vpe_in_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
-        MSG("Space allocated");
-        bo_vpe_in.buf[i].fd[0] = omap_bo_dmabuf(bo_vpe_in.buf[i].bo[0]);
-    }
+  // Create an "omap_device" from the fd
+  struct omap_device *dev = omap_device_new(alloc_fd);
+  bo_vpe_in = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
+  for (int i = 0; i < vip.src.num_buffers; i++) {
+      // allocate space for buffer object (bo)
+      bo_vpe_in[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
+      // define the object
+  		bo_vpe_in[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+      // give the object a file descriptor for dmabuf v4l2 calls
+      bo_vpe_in[i].fd[0] = omap_bo_dmabuf(bo_vpe_in[i].bo[0]);
   }
 
   if(!vip.request_buf()) {
@@ -90,7 +84,7 @@ bool CamDisp::init_capture_pipeline() {
   }
   MSG("Successfully requested VIP buffers\n\n");
 
-  if (!vpe.vpe_input_init(NULL)) {
+  if (!vpe.vpe_input_init()) {
     ERROR("Input layer initialization failed.");
     return false;
   }
@@ -103,7 +97,7 @@ bool CamDisp::init_capture_pipeline() {
   MSG("Output layer initialization done\n");
 
   for (int i=0; i < NBUF; i++) {
-    if(!vip.queue_buf(bo_vpe_in.buf[i].fd[0], i)) {
+    if(!vip.queue_buf(bo_vpe_in[i].fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
@@ -136,14 +130,14 @@ void *CamDisp::grab_image() {
     if (stop_after_one) {
       vpe.output_qbuf(frame_num);
       frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in.buf[frame_num].fd[0], frame_num);
+      vip.queue_buf(bo_vpe_in[frame_num].fd[0], frame_num);
     }
 
     /* dequeue the vip */
     frame_num = vip.dequeue_buf(&vpe);
 
     /* queue that frame onto the vpe */
-    if (!vpe.input_qbuf(bo_vpe_in.buf[frame_num].fd[0], frame_num)) {
+    if (!vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num)) {
       ERROR("vpe input queue buffer failed");
       return NULL;
     }
@@ -170,7 +164,7 @@ void CamDisp::init_vpe_stream() {
     /* To star deinterlace, minimum 3 frames needed */
     if (vpe.m_deinterlace && count != 3) {
       frame_num = vip.dequeue_buf(&vpe);
-      vpe.input_qbuf(bo_vpe_in.m_fd[frame_num], frame_num);
+      vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num);
     }
     else {
       /* Begin streaming the input of the vpe */
@@ -186,3 +180,31 @@ void CamDisp::turn_off() {
   vpe.stream_off(1);
   vpe.stream_off(0);
 }
+
+
+/* Testing functionality: To use this, just type "make test" and then run
+ * ./test - Make sure to uncomment this section beforehand if not already
+ * done.
+ */
+// int main() {
+//   int cap_w = 800;
+//   int cap_h = 600;
+//   int model_w = 1920;
+//   int model_h = 1080;
+//   CamDisp cam(cap_w, cap_h, model_w, model_h);
+//   cam.init_capture_pipeline();
+//
+//   auto start = std::chrono::high_resolution_clock::now();
+//   int num_frames = 300;
+//   for (int i=0; i<num_frames; i++)
+//     cam.grab_image();
+//   auto stop = std::chrono::high_resolution_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+//   MSG("******************");
+//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+//       model_w, model_h, (float) num_frames/(duration.count()/1000));
+//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+//       duration.count()/1000);
+//   MSG("******************");
+//   cam.turn_off();
+// }
