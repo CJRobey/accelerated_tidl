@@ -36,8 +36,8 @@ CamDisp::CamDisp() {
    */
   src_w = CAP_WIDTH;
   src_h = CAP_HEIGHT;
-  dst_w = MODEL_WIDTH;
-  dst_h = MODEL_HEIGHT;
+  dst_w = TIDL_MODEL_WIDTH;
+  dst_h = TIDL_MODEL_HEIGHT;
   frame_num = 0;
 }
 
