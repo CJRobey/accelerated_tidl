@@ -60,12 +60,12 @@ LIBS     += -ljson-c
 LIBS 		+= -ldrm -ldrm_omap
 INCLUDES := -I$(SDK_PATH_TARGET)/usr/include/omap -I$(SDK_PATH_TARGET)/usr/include/libdrm
 SOURCES = main.cpp ../common/object_classes.cpp ../common/utils.cpp \
-	../common/video_utils.cpp vip_obj.cpp vpe_obj.cpp cmem_buf.cpp capturevpedisplay.cpp save_utils.cpp
+	../common/video_utils.cpp vip_obj.cpp vpe_obj.cpp capturevpedisplay.cpp save_utils.cpp
 
 REALTIME_SOURCES = main-multithread.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp
 
-TEST_SOURCES = vip_obj.cpp vpe_obj.cpp cmem_buf.cpp capturevpedisplay.cpp
+TEST_SOURCES = vip_obj.cpp vpe_obj.cpp capturevpedisplay.cpp
 
 all: ssd_multibox ssd_multibox_realtime
 

@@ -21,7 +21,6 @@
     ((uint32_t)(uint8_t)(d) << 24 ))
 #define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
 
-
 struct dmabuf_buffer {
 	uint32_t fourcc, width, height;
 	int nbo;
@@ -31,7 +30,6 @@ struct dmabuf_buffer {
 	int fd[4];		/* dmabuf */
 	unsigned fb_id;
 };
-
 
 class CamDisp {
 public:

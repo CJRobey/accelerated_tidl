@@ -1,6 +1,5 @@
 #include <linux/videodev2.h>
 #include <string>
-#include "cmem_buf.h"
 
 #define NBUF (3)
 

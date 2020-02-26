@@ -15,7 +15,6 @@
 #include <linux/v4l2-controls.h>
 
 #include "v4l2_obj.h"
-#include "cmem_buf.h"
 #include "error.h"
 
 
