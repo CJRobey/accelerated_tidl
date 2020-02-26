@@ -105,7 +105,6 @@ ERR:
 
 VIPObj::VIPObj(){
   default_parameters();
-  device_init();
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
@@ -117,8 +116,6 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.num_buffers = num_buf;
     src.type=(v4l2_buf_type) type;
     src.fourcc = pix_fmt;
-
-    device_init();
 }
 
 VIPObj::~VIPObj(){

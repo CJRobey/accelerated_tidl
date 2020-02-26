@@ -82,7 +82,7 @@ bool VPEObj::set_ctrl()
 	ctrl.value = m_translen;
 	ret = ioctl(m_fd, VIDIOC_S_CTRL, &ctrl);
 	if (ret < 0) {
-		ERROR("vpe: S_CTRL failed\n");
+		ERROR("%s: vpe: S_CTRL failed with error %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
 	return true;
@@ -413,11 +413,8 @@ bool VPEObj::stream_off(int layer){
   return true;
 }
 
-
-
 VPEObj::VPEObj(){
   default_parameters();
-  open_fd();
 }
 
 
