@@ -45,7 +45,7 @@ public:
   void vpe_close();
   int set_src_format();
   int set_dst_format();
-  bool vpe_input_init(int *fd);
+  bool vpe_input_init();
   bool vpe_output_init();
   bool input_qbuf(int fd, int index);
   bool output_qbuf(int index);

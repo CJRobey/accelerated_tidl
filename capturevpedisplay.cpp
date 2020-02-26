@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <algorithm>
+#include <chrono>
 #include "error.h"
 
 #include <linux/videodev2.h>
@@ -20,6 +21,8 @@ extern "C" {
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "capturevpedisplay.h"
+using namespace std;
+using namespace chrono;
 
 #define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
     ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
@@ -28,14 +31,14 @@ extern "C" {
 
 
 CamDisp::CamDisp() {
-  MSG("Do Nothing");
-  /*src_w = CAP_WIDTH;
+  /* The VIP and VPE default constructors will be called since they are member
+   * variables
+   */
+  src_w = CAP_WIDTH;
   src_h = CAP_HEIGHT;
   dst_w = MODEL_WIDTH;
   dst_h = MODEL_HEIGHT;
-  // request vip buffers that point to the input buffer of the vpe
-  bo_vpe_in = BufObj(src_w, src_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
-  frame_num = 0;*/
+  frame_num = 0;
 }
 
 
@@ -46,7 +49,7 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
   dst_h = _dst_h;
 
   vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_RGB24, 3);
+  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
 
   frame_num = 0;
 }
@@ -81,7 +84,7 @@ bool CamDisp::init_capture_pipeline() {
   }
   MSG("Successfully requested VIP buffers\n\n");
 
-  if (!vpe.vpe_input_init(NULL)) {
+  if (!vpe.vpe_input_init()) {
     ERROR("Input layer initialization failed.");
     return false;
   }
@@ -178,11 +181,30 @@ void CamDisp::turn_off() {
   vpe.stream_off(0);
 }
 
-/* Testing functionality */
-int main() {
-  CamDisp cam(800, 600, 768, 320);
-  cam.init_capture_pipeline();
-  for (int i=0; i<100; i++)
-    cam.grab_image();
-  cam.turn_off();
-}
+
+/* Testing functionality: To use this, just type "make test" and then run
+ * ./test - Make sure to uncomment this section beforehand if not already
+ * done.
+ */
+// int main() {
+//   int cap_w = 800;
+//   int cap_h = 600;
+//   int model_w = 1920;
+//   int model_h = 1080;
+//   CamDisp cam(cap_w, cap_h, model_w, model_h);
+//   cam.init_capture_pipeline();
+//
+//   auto start = std::chrono::high_resolution_clock::now();
+//   int num_frames = 300;
+//   for (int i=0; i<num_frames; i++)
+//     cam.grab_image();
+//   auto stop = std::chrono::high_resolution_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+//   MSG("******************");
+//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+//       model_w, model_h, (float) num_frames/(duration.count()/1000));
+//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+//       duration.count()/1000);
+//   MSG("******************");
+//   cam.turn_off();
+// }

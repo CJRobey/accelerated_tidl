@@ -88,7 +88,7 @@ bool VPEObj::set_ctrl()
 	return true;
 }
 
-bool VPEObj::vpe_input_init(int *fd)
+bool VPEObj::vpe_input_init()
 {
 	int ret;
 	struct v4l2_requestbuffers rqbufs;
@@ -242,9 +242,6 @@ bool VPEObj::input_qbuf(int fd, int index){
   struct v4l2_buffer buf;
 	struct v4l2_plane planes[2];
 
-	MSG("vpe: src QBUF (%d):%s field", m_field,
-		m_field==V4L2_FIELD_TOP?"top":"bottom");
-
 	memset(&buf, 0, sizeof buf);
 	memset(&planes, 0, sizeof planes);
 
@@ -272,8 +269,6 @@ bool VPEObj::input_qbuf(int fd, int index){
   }
   gettimeofday(&buf.timestamp, NULL);
 
-
-  MSG("index %d", buf.index);
   int ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
   if (ret) {
       ERROR("VIDIOC_QBUF failed: %s (%d)", strerror(errno), ret);
@@ -374,7 +369,7 @@ bool VPEObj::stream_on(int layer){
   }
   else if (layer == 0) {
     type = (v4l2_buf_type) src.type;
-    MSG("Streaming VPE Intput");
+    MSG("Streaming VPE Input");
   }
 
   ret = ioctl(m_fd, VIDIOC_STREAMON, &type);
@@ -400,7 +395,7 @@ bool VPEObj::stream_off(int layer){
   }
   else if (layer == 0) {
     type = (v4l2_buf_type) src.type;
-    MSG("Disable Streaming VPE Intput");
+    MSG("Disable Streaming VPE Input");
   }
 
   ret = ioctl(m_fd, VIDIOC_STREAMOFF, &type);
@@ -419,8 +414,9 @@ VPEObj::VPEObj(){
 
 
 VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
-  int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers) {
-
+  int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc,
+  int num_buffers)
+{
   default_parameters();
   m_num_buffers = num_buffers;
 
