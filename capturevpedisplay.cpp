@@ -48,8 +48,6 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
   vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
   vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_RGB24, 3);
 
-  // request vip buffers that point to the input buffer of the vpe
-  bo_vpe_in = BufObj(src_w, src_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
   frame_num = 0;
 }
 
@@ -59,24 +57,22 @@ bool CamDisp::init_capture_pipeline() {
   vip.device_init();
   vpe.open_fd();
 
-  // request vip buffers that point to the input buffer of the vpe
-  //BufObj bo_vpe_out(vpe_out_w, vpe_out_h, 3, FOURCC_STR("RGB3"), 1, NBUF);
-  bool cmem = false;
+  // Grab the omapdrm file descriptor
+  int alloc_fd = drmOpen("omapdrm", NULL);
+  // Configure the capture device
+  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
 
-  if (cmem)
-    BufObj bo_vpe_in(src_w, src_h, 2, FOURCC_STR("YUYV"), 1, NBUF);
-  else {
-    int alloc_fd = drmOpen("omapdrm", NULL);
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
-
-    struct omap_device *dev = omap_device_new(alloc_fd);
-    bo_vpe_in.buf = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
-    for (int i = 0; i < vip.src.num_buffers; i++) {
-        bo_vpe_in.buf[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
-    		bo_vpe_in.buf[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
-        bo_vpe_in.buf[i].fd[0] = omap_bo_dmabuf(bo_vpe_in.buf[i].bo[0]);
-    }
+  // Create an "omap_device" from the fd
+  struct omap_device *dev = omap_device_new(alloc_fd);
+  bo_vpe_in.buf = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
+  for (int i = 0; i < vip.src.num_buffers; i++) {
+      // allocate space for buffer object (bo)
+      bo_vpe_in.buf[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
+      // define the object
+  		bo_vpe_in.buf[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+      // give the object a file descriptor for dmabuf v4l2 calls
+      bo_vpe_in.buf[i].fd[0] = omap_bo_dmabuf(bo_vpe_in.buf[i].bo[0]);
   }
 
   if(!vip.request_buf()) {
