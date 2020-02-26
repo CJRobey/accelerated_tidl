@@ -65,14 +65,14 @@ bool CamDisp::init_capture_pipeline() {
 
   // Create an "omap_device" from the fd
   struct omap_device *dev = omap_device_new(alloc_fd);
-  bo_vpe_in.buf = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
+  bo_vpe_in = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
   for (int i = 0; i < vip.src.num_buffers; i++) {
       // allocate space for buffer object (bo)
-      bo_vpe_in.buf[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
+      bo_vpe_in[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
       // define the object
-  		bo_vpe_in.buf[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+  		bo_vpe_in[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
       // give the object a file descriptor for dmabuf v4l2 calls
-      bo_vpe_in.buf[i].fd[0] = omap_bo_dmabuf(bo_vpe_in.buf[i].bo[0]);
+      bo_vpe_in[i].fd[0] = omap_bo_dmabuf(bo_vpe_in[i].bo[0]);
   }
 
   if(!vip.request_buf()) {
@@ -94,7 +94,7 @@ bool CamDisp::init_capture_pipeline() {
   MSG("Output layer initialization done\n");
 
   for (int i=0; i < NBUF; i++) {
-    if(!vip.queue_buf(bo_vpe_in.buf[i].fd[0], i)) {
+    if(!vip.queue_buf(bo_vpe_in[i].fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
@@ -127,14 +127,14 @@ void *CamDisp::grab_image() {
     if (stop_after_one) {
       vpe.output_qbuf(frame_num);
       frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in.buf[frame_num].fd[0], frame_num);
+      vip.queue_buf(bo_vpe_in[frame_num].fd[0], frame_num);
     }
 
     /* dequeue the vip */
     frame_num = vip.dequeue_buf(&vpe);
 
     /* queue that frame onto the vpe */
-    if (!vpe.input_qbuf(bo_vpe_in.buf[frame_num].fd[0], frame_num)) {
+    if (!vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num)) {
       ERROR("vpe input queue buffer failed");
       return NULL;
     }
@@ -161,7 +161,7 @@ void CamDisp::init_vpe_stream() {
     /* To star deinterlace, minimum 3 frames needed */
     if (vpe.m_deinterlace && count != 3) {
       frame_num = vip.dequeue_buf(&vpe);
-      vpe.input_qbuf(bo_vpe_in.m_fd[frame_num], frame_num);
+      vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num);
     }
     else {
       /* Begin streaming the input of the vpe */
@@ -178,6 +178,7 @@ void CamDisp::turn_off() {
   vpe.stream_off(0);
 }
 
+/* Testing functionality */
 int main() {
   CamDisp cam(800, 600, 768, 320);
   cam.init_capture_pipeline();
