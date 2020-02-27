@@ -15,20 +15,24 @@ extern "C" {
   #include <omap_drmif.h>
   #include <xf86drmMode.h>
 }
+
 #include <linux/dma-buf.h>
 #include <ti/cmem.h>
-#include "cmem_buf.h"
 #include "error.h"
 #include "disp_obj.h"
 
 /* align x to next highest multiple of 2^n */
 #define ALIGN2(x,n)   (((x) + ((1 << (n)) - 1)) & ~((1 << (n)) - 1))
 
+#define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
+    ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
+    ((uint32_t)(uint8_t)(d) << 24 ))
+#define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
+
 
 /******METHODS FOR ALLOCATION AND DESTRUCTION***************/
 
 DRMDeviceInfo::DRMDeviceInfo() {
-	MSG("And so it begins...");
 	/* Main camera display */
 	strcpy(dev_name,"/dev/drm");
 	strcpy(name,"drm");
@@ -44,8 +48,7 @@ DRMDeviceInfo::~DRMDeviceInfo() {
 /* If the use case need the buffer to be accessed by CPU for some processings,
  * then CMEM buffer can be used as they support cache operations by CPU.
  * omap_drm buffers doesn't support cache read. CPU can take 10x to 60x
- * more cycles to operate on non cached buffer. USE_CMEM_BUF macro is disabled
- * by deafult. Macro can be enabled from cmem_buf.h file
+ * more cycles to operate on non cached buffer.
  */
 DmaBuffer *DRMDeviceInfo::alloc_buffer()
 {
@@ -66,37 +69,19 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer()
 	buf->nbo = 1;
 	buf->pitches[0] = w*bytes_pp;
 
+	MSG("\nAllocating memory from OMAP DRM pool\n");
 
-	// if(use_cmem){
-	// 	MSG("\nAllocating memory from CMEM pool\n");
-	//
-	// 	//Allocate buffer from CMEM and get the buffer descriptor
-	// 	buf->fd[0]  = alloc_cmem_buffer(w*h*bytes_pp, 1, &buf->cmem_buf);
-	// 	if(buf->fd[0] < 0){
-	// 		free_cmem_buffer(buf->cmem_buf);
-	// 		ERROR(" Cannot export CMEM buffer\n");
-	// 		return NULL;
-	// 	}
-	//
-	// 	/* Get the omap bo from the fd allocted using CMEM */
-	// 	buf->bo[0] = omap_bo_from_dmabuf(dev, buf->fd[0]);
-	// 	if (buf->bo[0]){
-	// 		bo_handles[0] = omap_bo_handle(buf->bo[0]);
-	// 	}
-	//
-	// }
-	// else {
-		MSG("\nAllocating memory from OMAP DRM pool\n");
+	//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
+	//and drmPrimeHandleToFD() to get the buffer descriptors
+	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
+	if (buf->bo[0]){
+		bo_handles[0] = omap_bo_handle(buf->bo[0]);
+	}
 
-		//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
-		//and drmPrimeHandleToFD() to get the buffer descriptors
-		buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
-		if (buf->bo[0]){
-			bo_handles[0] = omap_bo_handle(buf->bo[0]);
-		}
-
-		buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
-	// }
+	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
+  MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd, buf->width, buf->height, fourcc);
+  for (int i=0;i<4;i++)
+    MSG("%d: bo_handles = %d - buf->pitches = %d - offsets = %d - &buf->fb_id = %d", i, bo_handles[i], buf->pitches[i], offsets[i], buf->fb_id);
 
 	ret = drmModeAddFB2(fd, buf->width, buf->height, fourcc,
 		bo_handles, buf->pitches, offsets, &buf->fb_id, 0);
@@ -110,28 +95,23 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer()
 	return buf;
 }
 
-void DRMDeviceInfo::free_vid_buffers()
+void DRMDeviceInfo::free_vid_buffers(unsigned int channel)
 {
 	unsigned int i;
 
-	if (buf == NULL) return;
+	if (plane_data_buffer[channel] == NULL) return;
 	for (i = 0; i < n; i++) {
-		if (buf[i]) {
-			close(buf[i]->fd[0]);
-			// if(use_cmem){
-			// 	free_cmem_buffer(buf[i]->cmem_buf);
-			// }
-			// else {
-				omap_bo_del(buf[i]->bo[0]);
-			// }
-			free(buf[i]);
+		if (plane_data_buffer[channel][i]) {
+			close(plane_data_buffer[channel][i]->fd[0]);
+			omap_bo_del(plane_data_buffer[channel][i]->bo[0]);
+			free(plane_data_buffer[channel][i]);
 		}
 	}
-	free(buf);
+	free(plane_data_buffer[channel]);
 }
 
 
-bool DRMDeviceInfo::get_vid_buffers(unsigned int _n,
+bool DRMDeviceInfo::get_vid_buffers(unsigned int channel, unsigned int _n,
 		unsigned int _fourcc, unsigned int _w, unsigned int _h)
 {
 	fourcc = _fourcc;
@@ -140,15 +120,16 @@ bool DRMDeviceInfo::get_vid_buffers(unsigned int _n,
 	n = _n;
 	unsigned int i = 0;
 
-	buf = (DmaBuffer **) calloc(n, sizeof(*buf));
-	if (!buf) {
+	plane_data_buffer[channel] = (DmaBuffer **) calloc(n,
+    sizeof(*plane_data_buffer[channel]));
+	if (!plane_data_buffer[channel]) {
 		ERROR("allocation failed");
 		goto fail;
 	}
 
 	for (i = 0; i < n; i++) {
-		buf[i] = alloc_buffer();
-		if (!buf[i]) {
+		plane_data_buffer[channel][i] = alloc_buffer();
+		if (!plane_data_buffer[channel][i]) {
 			ERROR("allocation failed");
 			goto fail;
 		}
@@ -224,7 +205,7 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 }
 
 
-void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VPEObj vpe)
+void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj vip)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -263,8 +244,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VPEObj vpe)
 		buf_index = i;
 
 
-		printf("w=%d, h=%d\n", vpe.dst.width, vpe.dst.height);
-		add_property(fd, req, props, plane_id[i], "FB_ID", buf[buf_index][0].fb_id);
+		printf("w=%d, h=%d\n", vip.src.width, vip.src.height);
+		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[buf_index][0]->fb_id);
 
 		//set the plane properties once. No need to set these values every time
 		//with the display of frame.
@@ -275,8 +256,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VPEObj vpe)
 		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
-		add_property(fd, req, props, plane_id[i], "SRC_W", vpe.dst.width << 16);
-		add_property(fd, req, props, plane_id[i], "SRC_H", vpe.dst.height << 16);
+		add_property(fd, req, props, plane_id[i], "SRC_W", vip.src.width << 16);
+		add_property(fd, req, props, plane_id[i], "SRC_H", vip.src.height << 16);
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
 		//Set global_alpha value if needed
 		//add_property(fd, req, props, plane_id, "global_alpha", 150);
@@ -344,9 +325,10 @@ void DRMDeviceInfo::drm_crtc_resolution()
 	};
 
 	for (i = 0; i < res->count_crtcs; i++) {
-		unsigned int crtc_id = res->crtcs[i];
+    MSG("id #%d", res->crtcs[i]);
+		unsigned int _crtc_id = res->crtcs[i];
 
-		crtc = drmModeGetCrtc(fd, crtc_id);
+		crtc = drmModeGetCrtc(fd, _crtc_id);
 		if (!crtc) {
 			DBG("could not get crtc %i: %s\n", res->crtcs[i], strerror(errno));
 			continue;
@@ -357,7 +339,7 @@ void DRMDeviceInfo::drm_crtc_resolution()
 		}
 
 		printf("CRTCs size: %dx%d\n", crtc->width, crtc->height);
-		crtc_id = crtc_id;
+		crtc_id = _crtc_id;
 		width = crtc->width;
 		height = crtc->height;
 
@@ -448,7 +430,7 @@ int DRMDeviceInfo::drm_init_device()
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(VPEObj vpe)
+int DRMDeviceInfo::drm_init_dss(VIPObj vip)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -484,14 +466,14 @@ int DRMDeviceInfo::drm_init_dss(VPEObj vpe)
 	}
 
 	drmModeAtomicReqPtr req = drmModeAtomicAlloc();
-	MSG("drmModeAtomicAlloc done fd = %d, crtc_id = %d\n", fd, crtc_id);
+	MSG("drmModeAtomicAlloc done fd = %d, crtc_id = %u\n", fd, crtc_id);
 	/* Set CRTC properties */
 	props = drmModeObjectGetProperties(fd, crtc_id,
 		DRM_MODE_OBJECT_CRTC);
-	if(props == NULL){
-		ERROR("drm obeject properties for plane type is NULL\n");
-		return -1;
-	}
+	// if(props == NULL){
+	// 	ERROR("drm obeject properties for plane type is NULL\n");
+	// 	return -1;
+	// }
 	std::cout << "drmModeObjectGetProperties done\n" << std::endl;
 	sleep(1);
 
@@ -516,7 +498,7 @@ int DRMDeviceInfo::drm_init_dss(VPEObj vpe)
 
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
-	drm_add_plane_property(req, vpe);
+	drm_add_plane_property(req, vip);
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
@@ -552,8 +534,18 @@ void DRMDeviceInfo::drm_exit_device()
 int main(){
 	DRMDeviceInfo d;
 	d.drm_init_device();
-	VPEObj vpe = VPEObj();
-	d.drm_init_dss(vpe);
+  VIPObj vip = VIPObj("/dev/video1", 800, 600, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+  vip.device_init();
+  if(!vip.request_buf()) {
+    ERROR("VIP buffer requests failed.");
+    return false;
+  }
+  MSG("Successfully requested VIP buffers\n\n");
+
+  d.get_vid_buffers(0, 3, V4L2_PIX_FMT_YUYV, 800, 600);
+  for (int i=0; i<3; i++)
+    vip.queue_buf(d.plane_data_buffer[0][i]->fd[0], i);
+	d.drm_init_dss(vip);
 	MSG("We done it.");
 
 	return 0;
