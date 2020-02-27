@@ -47,7 +47,7 @@ public:
   bool vpe_input_init();
   bool vpe_output_init();
   bool input_qbuf(int fd, int index);
-  bool output_qbuf(int index);
+  bool output_qbuf(int fd, int index);
   bool stream_on(int layer);
   bool stream_off(int layer);
   int input_dqbuf();

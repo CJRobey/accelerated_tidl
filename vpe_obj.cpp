@@ -276,7 +276,7 @@ bool VPEObj::input_qbuf(int fd, int index){
   return true;
 }
 
-bool VPEObj::output_qbuf(int index)
+bool VPEObj::output_qbuf(int fd, int index)
 {
 	int ret;
 	struct v4l2_buffer buf;
@@ -293,7 +293,8 @@ bool VPEObj::output_qbuf(int index)
 		buf.length = 2;
 	else
 		buf.length = 1;
-
+  if (dst.memory == V4L2_MEMORY_DMABUF)
+    buf.m.fd = fd;
   gettimeofday(&buf.timestamp, NULL);
 
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
