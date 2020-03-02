@@ -276,7 +276,7 @@ bool VPEObj::input_qbuf(int fd, int index){
   return true;
 }
 
-bool VPEObj::output_qbuf(int fd, int index)
+bool VPEObj::output_export_qbuf(int fd, int index)
 {
 	int ret;
 	struct v4l2_buffer buf;
@@ -295,6 +295,34 @@ bool VPEObj::output_qbuf(int fd, int index)
 		buf.length = 1;
   if (dst.memory == V4L2_MEMORY_DMABUF)
     buf.m.fd = fd;
+  gettimeofday(&buf.timestamp, NULL);
+
+	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
+	if (ret < 0) {
+		ERROR( "vpe o/p: QBUF failed: %s, index = %d\n",
+			strerror(errno), index);
+      return false;
+  }
+	return true;
+}
+
+bool VPEObj::output_qbuf(int index)
+{
+	int ret;
+	struct v4l2_buffer buf;
+	struct v4l2_plane planes[2];
+
+	memset(&buf, 0, sizeof buf);
+	memset(&planes, 0, sizeof planes);
+
+	buf.type = dst.type;
+	buf.memory = dst.memory;
+	buf.index = index;
+	buf.m.planes = &planes[0];
+	if(dst.coplanar)
+		buf.length = 2;
+	else
+		buf.length = 1;
   gettimeofday(&buf.timestamp, NULL);
 
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
