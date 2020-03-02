@@ -23,7 +23,7 @@
 
 struct dmabuf_buffer {
 	uint32_t fourcc, width, height;
-	int nbo;
+	int num_buffer_objects;
 	void *cmem_buf;
 	struct omap_bo **bo;
 	uint32_t pitches[4];
