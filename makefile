@@ -63,7 +63,7 @@ SOURCES = main.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp vip_obj.cpp vpe_obj.cpp capturevpedisplay.cpp \
 	save_utils.cpp disp_obj.cpp
 
-TST_SRC = disp_obj.cpp vpe_obj.cpp vip_obj.cpp
+TST_SRC = disp_obj.cpp vpe_obj.cpp vip_obj.cpp save_utils.cpp
 
 REALTIME_SOURCES = main-multithread.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp
