@@ -13,8 +13,12 @@
 class DmaBuffer {
 public:
 	uint32_t fourcc, width, height;
-	int nbo;
+	int num_buffer_objects;
 	void *cmem_buf;
+	/* The [4]'s are due to the fact that the DSS can  support up to 4 planes of
+	 * operation. If the user wants to populate the second plane, they may place
+	 * the data in [1], [2], or [3]
+	 */
 	struct omap_bo *bo[4];
 	uint32_t pitches[4];
 	int fd[4];		/* dmabuf */
@@ -59,7 +63,7 @@ public:
 	int drm_init_device();
 	int drm_init_dss(VIPObj vip);
 	void drm_exit_device();
-
+	void disp_frame(VIPObj *vip);
 	int fd;
 	int width;
 	int height;
