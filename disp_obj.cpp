@@ -701,48 +701,19 @@ int main() {
   }
 
   if(!vip.request_export_buf(export_fds)) {
-  // if(!vip.request_buf()) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
 
   MSG("Successfully requested VIP buffers\n\n");
   for (int i=0; i<buffer_count; i++) {
-    // print_v4l2buffer(vip.m_v4l2bufs[i]);
-    // vip.queue_buf(d.plane_data_buffer[0][i]->fd[0]);
-
-    /* fds are correct */
-    // for (int j=0; j<buffer_count; j++)
-    //   MSG("%d: fd -> %d", j, export_fds[j]);
-
     vip.queue_buf(export_fds[i]);
-
-    // vip.queue_export_buf(export_fds[i], i);
   }
   vip.stream_on();
-  int tmp = vip.dequeue_buf(NULL);
-  vip.queue_buf(export_fds[tmp]);
-  if (tmp < 0) {
-    ERROR("initial queueing test failed");
-  }
-  else {
-    MSG("initial de/queueing of buffer %d passed", tmp);
-  }
   d.drm_init_dss(&vip, export_fds);
 
-  tmp = vip.dequeue_buf(NULL);
-  vip.queue_buf(export_fds[tmp]);
-  if (tmp < 0) {
-    ERROR("initial queueing test failed");
-  }
-  else {
-    MSG("initial de/queueing of buffer %d passed", tmp);
-  }
-
-  MSG("done with drm_init");
   for (int i=0; i<100; i++)
     d.disp_frame(&vip, export_fds);
-	MSG("We done it.");
 
 	return 0;
 }
