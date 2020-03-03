@@ -42,10 +42,11 @@ public:
   int src_h;
   int dst_w;
   int dst_h;
+  bool usb = true;
   bool stop_after_one = false;
 
   CamDisp();
-  CamDisp(int src_w, int src_h, int dst_w, int dst_h);
+  CamDisp(int src_w, int src_h, int dst_w, int dst_h, std::string dev_name, bool usb);
   bool init_capture_pipeline(int alloc_fd);
   void *grab_image(DRMDeviceInfo *d);
   void init_vpe_stream();

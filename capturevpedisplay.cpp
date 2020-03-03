@@ -40,21 +40,22 @@ CamDisp::CamDisp() {
   dst_w = TIDL_MODEL_WIDTH;
   dst_h = TIDL_MODEL_HEIGHT;
   frame_num = 0;
+  usb = true;
 }
 
 
-CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
+CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h,
+  string dev_name, bool usb) {
   src_w = _src_w;
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
-  bool usb = true;
 
   if (usb) {
-    vip = VIPObj("/dev/video2", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
   }
   else {
-    vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
   }
   vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
 
@@ -226,8 +227,8 @@ void CamDisp::turn_off() {
 }
 
 /* Testing functionality: To use this, just type "make test-vpe" and then run
- * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment this section beforehand if not already
- * done.
+ * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment the
+ * "main" section beforehand if not already done.
  */
 
 int main(int argc, char *argv[]) {
@@ -235,8 +236,11 @@ int main(int argc, char *argv[]) {
   int cap_h = 600;
   int model_w = 768;
   int model_h = 320;
-  CamDisp cam(cap_w, cap_h, model_w, model_h);
 
+  // capture w, capture h, output w, output h, device name, is usb?
+  CamDisp cam(cap_w, cap_h, model_w, model_h, "/dev/video2", true);
+
+  // This is the display object
   DRMDeviceInfo drm_device;
   drm_device.drm_init_device();
 
