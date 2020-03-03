@@ -23,7 +23,7 @@ public:
   int memory;
   v4l2_format fmt;
   v4l2_colorspace colorspace;
-  v4l2_buffer *v4l2buf;
+  v4l2_buffer *v4l2bufs;
   int num_buffers;
 };
 
@@ -48,8 +48,7 @@ public:
   bool vpe_input_init();
   bool vpe_output_init();
   bool input_qbuf(int fd, int index);
-  bool output_qbuf(int index);
-  bool output_export_qbuf(int fd, int index);
+  bool output_qbuf(int fd, int index);
   bool stream_on(int layer);
   bool stream_off(int layer);
   int input_dqbuf();
@@ -68,21 +67,19 @@ class VIPObj {
 public:
   int m_fd;
   ImageParams src;
-  v4l2_buffer *v4l2bufs;
 
   VIPObj();
   VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type);
   ~VIPObj();
   int set_format();
   void device_init();
+  bool queue_buf(int fd);
   bool queue_export_buf(int fd, int index);
-  bool queue_buf(int index);
-  bool request_export_buf(int *fd);
   bool request_buf();
+  bool request_export_buf(int *fds);
   bool stream_on();
   int stream_off();
   int dequeue_buf(VPEObj *vpe);
-  int dequeue_buf();
   int display_buffer(int index);
 
 private:

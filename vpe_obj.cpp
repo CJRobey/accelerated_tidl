@@ -35,7 +35,7 @@ void VPEObj::default_parameters(void) {
     src.width = CAP_WIDTH;
     src.height = CAP_HEIGHT;
     src.size = src.width * src.height * 2;
-    src.v4l2buf = NULL;
+    src.v4l2bufs = NULL;
     // OUTPUT is the input buffer of the VPE
     src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     src.coplanar = false;
@@ -46,7 +46,7 @@ void VPEObj::default_parameters(void) {
     dst.width = TIDL_MODEL_WIDTH;
     dst.height = TIDL_MODEL_HEIGHT;
     dst.size = dst.width * dst.height * 3;
-    dst.v4l2buf = NULL;
+    dst.v4l2bufs = NULL;
     // CAPTURE is the output buffer of the VPE
     dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
     dst.coplanar = false;
@@ -276,7 +276,7 @@ bool VPEObj::input_qbuf(int fd, int index){
   return true;
 }
 
-bool VPEObj::output_export_qbuf(int fd, int index)
+bool VPEObj::output_qbuf(int fd, int index)
 {
 	int ret;
 	struct v4l2_buffer buf;
@@ -295,34 +295,6 @@ bool VPEObj::output_export_qbuf(int fd, int index)
 		buf.length = 1;
   if (dst.memory == V4L2_MEMORY_DMABUF)
     buf.m.fd = fd;
-  gettimeofday(&buf.timestamp, NULL);
-
-	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
-	if (ret < 0) {
-		ERROR( "vpe o/p: QBUF failed: %s, index = %d\n",
-			strerror(errno), index);
-      return false;
-  }
-	return true;
-}
-
-bool VPEObj::output_qbuf(int index)
-{
-	int ret;
-	struct v4l2_buffer buf;
-	struct v4l2_plane planes[2];
-
-	memset(&buf, 0, sizeof buf);
-	memset(&planes, 0, sizeof planes);
-
-	buf.type = dst.type;
-	buf.memory = dst.memory;
-	buf.index = index;
-	buf.m.planes = &planes[0];
-	if(dst.coplanar)
-		buf.length = 2;
-	else
-		buf.length = 1;
   gettimeofday(&buf.timestamp, NULL);
 
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
@@ -462,8 +434,8 @@ VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
 }
 
 VPEObj::~VPEObj(){
-    free(src.v4l2buf);
-    free(dst.v4l2buf);
+    free(src.v4l2bufs);
+    free(dst.v4l2bufs);
     close(m_fd);
     return;
 }

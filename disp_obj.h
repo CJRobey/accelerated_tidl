@@ -1,7 +1,6 @@
 #include <xf86drmMode.h>
 #include <linux/videodev2.h>
 #include <string>
-#include "v4l2_obj.h"
 #define PAGE_SHIFT 12
 #define MAX_DRM_PLANES 5
 #define CAP_WIDTH 800
@@ -19,7 +18,7 @@ public:
 	 * operation. If the user wants to populate the second plane, they may place
 	 * the data in [1], [2], or [3]
 	 */
-	struct omap_bo *bo[4];
+	struct omap_bo **bo;
 	uint32_t pitches[4];
 	int fd[4];		/* dmabuf */
 	unsigned fb_id;
@@ -46,6 +45,7 @@ public:
 	void free_vid_buffers(unsigned int channel);
 	bool get_vid_buffers(unsigned int channel, unsigned int _n,
 			unsigned int _fourcc, unsigned int _w, unsigned int _h);
+	bool export_buffer(DmaBuffer **db, int num_bufs);
   DRMDeviceInfo();
 	~DRMDeviceInfo();
 
@@ -56,15 +56,16 @@ public:
 	void add_property(int fd, drmModeAtomicReqPtr req, drmModeObjectPropertiesPtr props,
 		  unsigned int plane_id,
 		  const char *name, int value);
-	void drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj vip);
+	void drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip);
 	unsigned int drm_reserve_plane(unsigned int *ptr_plane_id, int num_planes);
 	void drm_crtc_resolution();
 	void drm_restore_props();
 	int drm_init_device();
-	int drm_init_dss(VIPObj vip);
+	int drm_init_dss(VIPObj *vip, int *fd);
 	void drm_exit_device();
-	void disp_frame(VIPObj *vip);
-	int fd;
+	void disp_frame(VIPObj *vip, int *fd);
+	void disp_frame(int frame_num);
+	int fd = 0;
 	int width;
 	int height;
 	unsigned int w;

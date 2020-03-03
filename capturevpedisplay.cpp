@@ -21,6 +21,7 @@ extern "C" {
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "capturevpedisplay.h"
+#include "save_utils.h"
 using namespace std;
 using namespace chrono;
 
@@ -105,7 +106,7 @@ bool CamDisp::init_capture_pipeline() {
   MSG("VIP initial buffer queues done\n");
 
   for (int i=0; i < NBUF; i++) {
-    if(!vpe.output_qbuf(i)) {
+    if(!vpe.output_qbuf(0, i)) {
       ERROR(" initial queue VPE output buffer #%d failed", i);
       return false;
     }
@@ -128,7 +129,7 @@ void *CamDisp::grab_image() {
      * the data pointed to by *imagedata could be corrupted.
      */
     if (stop_after_one) {
-      vpe.output_qbuf(frame_num);
+      vpe.output_qbuf(0, frame_num);
       frame_num = vpe.input_dqbuf();
       vip.queue_buf(bo_vpe_in[frame_num].fd[0], frame_num);
     }
@@ -185,25 +186,25 @@ void CamDisp::turn_off() {
  * ./test - Make sure to uncomment this section beforehand if not already
  * done.
  */
-// int main() {
-//   int cap_w = 800;
-//   int cap_h = 600;
-//   int model_w = 1920;
-//   int model_h = 1080;
-//   CamDisp cam(cap_w, cap_h, model_w, model_h);
-//   cam.init_capture_pipeline();
-//
-//   auto start = std::chrono::high_resolution_clock::now();
-//   int num_frames = 300;
-//   for (int i=0; i<num_frames; i++)
-//     cam.grab_image();
-//   auto stop = std::chrono::high_resolution_clock::now();
-//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-//   MSG("******************");
-//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-//       model_w, model_h, (float) num_frames/(duration.count()/1000));
-//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
-//       duration.count()/1000);
-//   MSG("******************");
-//   cam.turn_off();
-// }
+int main() {
+  int cap_w = 800;
+  int cap_h = 600;
+  int model_w = 768;
+  int model_h = 320;
+  CamDisp cam(cap_w, cap_h, model_w, model_h);
+  cam.init_capture_pipeline();
+
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_frames = 300;
+  for (int i=0; i<num_frames; i++)
+    cam.grab_image();
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+  MSG("******************");
+  MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+      model_w, model_h, (float) num_frames/(duration.count()/1000));
+  MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+      duration.count()/1000);
+  MSG("******************");
+  cam.turn_off();
+}

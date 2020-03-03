@@ -15,7 +15,7 @@ extern "C" {
   #include <omap_drmif.h>
   #include <xf86drmMode.h>
 }
-
+#include "v4l2_obj.h"
 #include <linux/dma-buf.h>
 #include <ti/cmem.h>
 #include "error.h"
@@ -74,10 +74,12 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer()
 
 	//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
 	//and drmPrimeHandleToFD() to get the buffer descriptors
+  buf->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
 	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
 	if (buf->bo[0]){
 		bo_handles[0] = omap_bo_handle(buf->bo[0]);
 	}
+  MSG("bo new and handle done\n");
 
 	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
   print_omap_bo(buf->bo[0]);
@@ -104,51 +106,41 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer()
  * omap_drm buffers doesn't support cache read. CPU can take 10x to 60x
  * more cycles to operate on non cached buffer.
  */
-DmaBuffer *DRMDeviceInfo::export_buffer()
+bool DRMDeviceInfo::export_buffer(DmaBuffer **db, int num_bufs)
 {
-	DmaBuffer *buf;
 	unsigned int bo_handles[4] = {0}, offsets[4] = {0};
 	int ret;
 	int bytes_pp = 2; //capture buffer is in YUYV format
 
-	buf = (class DmaBuffer *) calloc(1, sizeof(class DmaBuffer));
-	if (!buf) {
-		ERROR("allocation failed");
-		return NULL;
-	}
 
-	buf->fourcc = fourcc;
-	buf->width = w;
-	buf->height = h;
-	buf->num_buffer_objects = 1;
-	buf->pitches[0] = w*bytes_pp;
+  for (int i=0; i<num_bufs; i++) {
+  	db[i]->num_buffer_objects = 1;
+  	db[i]->pitches[0] = db[i]->width*bytes_pp;
 
-	MSG("\nAllocating memory from OMAP DRM pool\n");
+  	if (db[i]->bo[0]){
+  		bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
+  	}
+    else {
+      ERROR("Passed unallocated buffers to export_buffer function");
+      return false;
+    }
+  	ret = drmModeAddFB2(fd, db[i]->width, db[i]->height, db[i]->fourcc,
+  		bo_handles, db[i]->pitches, offsets, &db[i]->fb_id, 0);
 
-	//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
-	//and drmPrimeHandleToFD() to get the buffer descriptors
-	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
-	if (buf->bo[0]){
-		bo_handles[0] = omap_bo_handle(buf->bo[0]);
-	}
+    for (int i=0;i<num_bufs;i++) {
+      MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd, db[i]->width, db[i]->height, db[i]->fourcc);
+      MSG("\b%d: bo_handles = %d - buf->pitches = %d - offsets = %d - &buf->fb_id = %d", i, bo_handles[i], db[i]->pitches[i], offsets[i], db[i]->fb_id);
+    }
 
-	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
-  print_omap_bo(buf->bo[0]);
-  MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd, buf->width, buf->height, fourcc);
-  for (int i=0;i<4;i++)
-    MSG("%d: bo_handles = %d - buf->pitches = %d - offsets = %d - &buf->fb_id = %d", i, bo_handles[i], buf->pitches[i], offsets[i], buf->fb_id);
+  	MSG("fourcc: %d, fb_id %d \n", db[i]->fourcc, db[i]->fb_id);
+  	if (ret) {
+  		ERROR("drmModeAddFB2 failed: %s (%d)", strerror(errno), ret);
+  		return NULL;
+  	}
+  }
 
-  //print_omap_bo((buf->bo[0]));
-	ret = drmModeAddFB2(fd, buf->width, buf->height, fourcc,
-		bo_handles, buf->pitches, offsets, &buf->fb_id, 0);
-
-	MSG("fourcc:%d, fb_id %d \n",fourcc, buf->fb_id);
-	if (ret) {
-		ERROR("drmModeAddFB2 failed: %s (%d)", strerror(errno), ret);
-		return NULL;
-	}
-
-	return buf;
+  plane_data_buffer[0] = db;
+	return true;
 }
 
 void DRMDeviceInfo::free_vid_buffers(unsigned int channel)
@@ -259,7 +251,7 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 }
 
 
-void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj vip)
+void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -297,8 +289,6 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj vip)
 
 		buf_index = i;
 
-
-		printf("w=%d, h=%d\n", vip.src.width, vip.src.height);
 		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[buf_index][0]->fb_id);
 
 		//set the plane properties once. No need to set these values every time
@@ -310,8 +300,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj vip)
 		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
-		add_property(fd, req, props, plane_id[i], "SRC_W", vip.src.width << 16);
-		add_property(fd, req, props, plane_id[i], "SRC_H", vip.src.height << 16);
+		add_property(fd, req, props, plane_id[i], "SRC_W", vip->src.width << 16);
+		add_property(fd, req, props, plane_id[i], "SRC_H", vip->src.height << 16);
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
 		//Set global_alpha value if needed
 		//add_property(fd, req, props, plane_id, "global_alpha", 150);
@@ -484,7 +474,7 @@ int DRMDeviceInfo::drm_init_device()
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(VIPObj vip)
+int DRMDeviceInfo::drm_init_dss(VIPObj *vip, int *export_fds)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -520,6 +510,7 @@ int DRMDeviceInfo::drm_init_dss(VIPObj vip)
 	}
 
 	drmModeAtomicReqPtr req = drmModeAtomicAlloc();
+
 	MSG("drmModeAtomicAlloc done fd = %d, crtc_id = %u\n", fd, crtc_id);
 	/* Set CRTC properties */
 	props = drmModeObjectGetProperties(fd, crtc_id,
@@ -551,6 +542,7 @@ int DRMDeviceInfo::drm_init_dss(VIPObj vip)
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
 	drm_add_plane_property(req, vip);
+  MSG("added plane properties");
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
@@ -562,6 +554,7 @@ int DRMDeviceInfo::drm_init_dss(VIPObj vip)
 		return -1;
 	}
 
+  MSG("before drmModeAtomicFree");
 	drmModeAtomicFree(req);
 	return 0;
 }
@@ -597,7 +590,7 @@ static void page_flip_handler(int fd, unsigned int frame,
 	(void) usec;
 }
 
-void DRMDeviceInfo::disp_frame(VIPObj *vip) {
+void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
   fd_set fds;
 	int ret, frame_num, waiting_for_flip = 1;
 	class DmaBuffer *buf[2] = {NULL, NULL};
@@ -607,7 +600,7 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip) {
 		.vblank_handler = 0,
 		.page_flip_handler = page_flip_handler,
 	};
-  frame_num = vip->dequeue_buf();
+  frame_num = vip->dequeue_buf(NULL);
   MSG("Dequeued once -> frame_num = %d", frame_num);
   buf[0] = plane_data_buffer[0][frame_num];
 
@@ -642,9 +635,53 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip) {
 		}
 		drmHandleEvent(fd, &evctx);
 	}
-  vip->queue_buf(frame_num);
+  vip->queue_buf(exported_fds[frame_num]);
+}
 
+void DRMDeviceInfo::disp_frame(int frame_num) {
+  fd_set fds;
+	int ret, waiting_for_flip = 1;
+	class DmaBuffer *buf[2] = {NULL, NULL};
+	drmModeAtomicReqPtr req = drmModeAtomicAlloc();
+  drmEventContext evctx = {
+		.version = DRM_EVENT_CONTEXT_VERSION,
+		.vblank_handler = 0,
+		.page_flip_handler = page_flip_handler,
+	};
+  MSG("Dequeued once -> frame_num = %d", frame_num);
+  buf[0] = plane_data_buffer[0][frame_num];
 
+  drmModeAtomicAddProperty(req, plane_id[0], prop_fbid, buf[0]->fb_id);
+  ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
+
+  if(!ret){
+    drmModeAtomicCommit(fd, req,
+      DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
+  }
+  else {
+    ERROR("failed to add plane atomically: %s", strerror(errno));
+  }
+
+	drmModeAtomicFree(req);
+
+  FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+
+	while (waiting_for_flip) {
+		ret = select(fd + 1, &fds, NULL, NULL, NULL);
+		if (ret < 0) {
+			ERROR("select err: %s\n", strerror(errno));
+			return;
+		}
+		else if (ret == 0) {
+			ERROR("select timeout!\n");
+			return;
+		}
+		else if (FD_ISSET(0, &fds)) {
+			continue;
+		}
+		drmHandleEvent(fd, &evctx);
+	}
 }
 
 int main() {
@@ -663,24 +700,48 @@ int main() {
     export_fds[i] = d.plane_data_buffer[0][i]->fd[0];
   }
 
-  // if(!vip.request_export_buf(export_fds)) {
-  if(!vip.request_buf()) {
+  if(!vip.request_export_buf(export_fds)) {
+  // if(!vip.request_buf()) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
 
   MSG("Successfully requested VIP buffers\n\n");
   for (int i=0; i<buffer_count; i++) {
-    // print_v4l2buffer(vip.v4l2bufs[i]);
+    // print_v4l2buffer(vip.m_v4l2bufs[i]);
     // vip.queue_buf(d.plane_data_buffer[0][i]->fd[0]);
-    vip.queue_export_buf(export_fds[i], i);
+
+    /* fds are correct */
+    // for (int j=0; j<buffer_count; j++)
+    //   MSG("%d: fd -> %d", j, export_fds[j]);
+
+    vip.queue_buf(export_fds[i]);
+
+    // vip.queue_export_buf(export_fds[i], i);
+  }
+  vip.stream_on();
+  int tmp = vip.dequeue_buf(NULL);
+  vip.queue_buf(export_fds[tmp]);
+  if (tmp < 0) {
+    ERROR("initial queueing test failed");
+  }
+  else {
+    MSG("initial de/queueing of buffer %d passed", tmp);
+  }
+  d.drm_init_dss(&vip, export_fds);
+
+  tmp = vip.dequeue_buf(NULL);
+  vip.queue_buf(export_fds[tmp]);
+  if (tmp < 0) {
+    ERROR("initial queueing test failed");
+  }
+  else {
+    MSG("initial de/queueing of buffer %d passed", tmp);
   }
 
-  vip.stream_on();
-
-  d.drm_init_dss(vip);
+  MSG("done with drm_init");
   for (int i=0; i<100; i++)
-    d.disp_frame(&vip);
+    d.disp_frame(&vip, export_fds);
 	MSG("We done it.");
 
 	return 0;
