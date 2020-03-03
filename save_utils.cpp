@@ -175,6 +175,43 @@ void print_v4l2buffer(v4l2_buffer *v) {
 }
 
 
+void print_v4l2_plane_buffer(v4l2_buffer *v) {
+  string memory, type;
+
+  switch (v->memory) {
+    case V4L2_MEMORY_MMAP:
+      memory = "V4L2_MEMORY_MMAP";
+      break;
+    case V4L2_MEMORY_DMABUF:
+      memory = "V4L2_MEMORY_DMABUF";
+      break;
+    case V4L2_MEMORY_USERPTR:
+      memory = "V4L2_MEMORY_USERPTR";
+      break;
+  }
+
+  switch (v->type) {
+    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+      type = "V4L2_BUF_TYPE_VIDEO_CAPTURE";
+      break;
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+      type = "V4L2_BUF_TYPE_VIDEO_OUTPUT";
+      break;
+    case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+      type = "V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE";
+      break;
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+      type = "V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE";
+      break;
+  }
+  MSG("********V4L2 Buffer Status*********");
+  MSG("memory: %s\ntype: %s\nindex: %d\n" \
+      "flags: 0x%x\nlength: %d\nfd: %d\noffset: %d", memory.c_str(), type.c_str(), (int) v->index,
+    (unsigned int) v->flags,v->m.planes[0].m.fd, (int) v->m.planes[0].length, (int) v->m.planes[0].m.mem_offset);
+  MSG("\b***************END*****************\n");
+}
+
+
 void print_omap_bo(omap_bo *bo) {
   MSG("********OMAP BO Status*********");
   MSG("size %d\thandle  %d\nmap 0x%x", omap_bo_size(bo), omap_bo_handle(bo),

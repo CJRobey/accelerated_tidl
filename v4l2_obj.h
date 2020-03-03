@@ -23,7 +23,9 @@ public:
   int memory;
   v4l2_format fmt;
   v4l2_colorspace colorspace;
-  v4l2_buffer *v4l2bufs;
+  //v4l2_buffer *v4l2bufs;
+  v4l2_buffer **v4l2bufs;
+
   int num_buffers;
 };
 
@@ -69,11 +71,11 @@ public:
   ImageParams src;
 
   VIPObj();
-  VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type);
+  VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type, int memory);
   ~VIPObj();
   int set_format();
   void device_init();
-  bool queue_buf(int fd);
+  bool queue_buf(int fd, int index);
   bool queue_export_buf(int fd, int index);
   bool request_buf();
   bool request_export_buf(int *fds);

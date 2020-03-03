@@ -83,7 +83,7 @@ void VIPObj::device_init(){
     src.fmt.fmt.pix.width = src.width;
     src.fmt.fmt.pix.height = src.height;
     src.fmt.fmt.pix.pixelformat = src.fourcc;
-    src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
+    //src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
     src.fmt.fmt.pix.colorspace = src.colorspace;
 
     ret = ioctl(m_fd, VIDIOC_S_FMT, &src.fmt);
@@ -108,7 +108,7 @@ VIPObj::VIPObj(){
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
-  int type){
+  int type, int memory){
     default_parameters();
     m_dev_name = dev_name;
     src.width = w;
@@ -116,6 +116,13 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.num_buffers = num_buf;
     src.type=(v4l2_buf_type) type;
     src.fourcc = pix_fmt;
+    if (src.fourcc == V4L2_PIX_FMT_YUYV)
+      src.size = w*h*2;
+    src.memory = memory;
+    if (src.memory == V4L2_MEMORY_MMAP)
+      src.fmt.fmt.pix.field = V4L2_FIELD_NONE;
+    else
+      src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
 }
 
 VIPObj::~VIPObj(){
@@ -149,6 +156,48 @@ bool VIPObj::request_buf(){
 }
 
 
+// /* In this example application, user space allocates the buffers and
+//  * provides the buffer fd to be exported to the V4L2 driver
+// */
+// bool VIPObj::request_export_buf(int * export_fds){
+//     struct v4l2_requestbuffers reqbuf;
+//     int ret;
+//     memset(&reqbuf, 0, sizeof(reqbuf));
+//     reqbuf.type = src.type;
+//     reqbuf.memory = src.memory;
+//     reqbuf.count = src.num_buffers;
+//
+//     ret = ioctl(m_fd, VIDIOC_REQBUFS, &reqbuf);
+//     if (ret < 0) {
+//         ERROR("VIDIOC_REQBUFS failed: %s (%d)", strerror(errno), ret);
+//         return false;
+//     }
+//
+//     src.num_buffers = reqbuf.count;
+//     MSG("Allocated %d buffers", reqbuf.count);
+//
+//     src.v4l2bufs = (struct v4l2_buffer *) calloc( reqbuf.count, sizeof(struct v4l2_buffer));
+//
+//     for (int i=0;i<(int)reqbuf.count; i++) {
+//       memset(src.v4l2bufs[i], 0, sizeof(*src.v4l2bufs[i]));
+//       src.v4l2bufs[i]->type = src.type;
+//       src.v4l2bufs[i]->memory = src.memory;
+//       src.v4l2bufs[i]->index = i;
+//
+//       ret = ioctl(m_fd, VIDIOC_QUERYBUF, src.v4l2bufs[i]);
+//       if (ret) {
+//   			ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+//   			return false;
+//       }
+//
+//       src.v4l2bufs[i]->m.fd = export_fds[i];
+//       MSG("Query buf #%d - exporting fd %d", i, export_fds[i]);
+//       print_v4l2buffer(src.v4l2bufs[i]);
+//     }
+//
+//     return true;
+// }
+
 /* In this example application, user space allocates the buffers and
  * provides the buffer fd to be exported to the V4L2 driver
 */
@@ -169,27 +218,50 @@ bool VIPObj::request_export_buf(int * export_fds){
     src.num_buffers = reqbuf.count;
     MSG("Allocated %d buffers", reqbuf.count);
 
-    src.v4l2bufs = (struct v4l2_buffer *) calloc( reqbuf.count, sizeof(struct v4l2_buffer));
+    src.v4l2bufs = (struct v4l2_buffer **) malloc(reqbuf.count * sizeof(unsigned int));
+    if (src.memory == V4L2_MEMORY_MMAP)
+      src.base_addr = (unsigned int **) calloc(src.num_buffers, sizeof(unsigned int));
 
     for (int i=0;i<(int)reqbuf.count; i++) {
-      memset(&src.v4l2bufs[i], 0, sizeof(src.v4l2bufs[i]));
-      src.v4l2bufs[i].type = src.type;
-      src.v4l2bufs[i].memory = src.memory;
-      src.v4l2bufs[i].index = i;
+      src.v4l2bufs[i] = (struct v4l2_buffer *) malloc(sizeof(struct v4l2_buffer));
+      //memset(src.v4l2bufs[i], 0, sizeof(struct v4l2_buffer));
+      src.v4l2bufs[i]->type = src.type;
+      src.v4l2bufs[i]->memory = src.memory;
+      src.v4l2bufs[i]->index = i;
 
-      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &src.v4l2bufs[i]);
+      ret = ioctl(m_fd, VIDIOC_QUERYBUF, src.v4l2bufs[i]);
+
       if (ret) {
   			ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
   			return false;
       }
 
-      src.v4l2bufs[i].m.fd = export_fds[i];
-      MSG("Query buf #%d - exporting fd %d", i, export_fds[i]);
-      print_v4l2buffer(&src.v4l2bufs[i]);
-    }
+      // check the memory type as to whether you should populate mmap or dmabuf
+      if (src.memory == V4L2_MEMORY_DMABUF) {
+        if (!export_fds) {
+          ERROR("NULL export file descriptors with DMABUF memory type");
+          return false;
+        }
+        src.v4l2bufs[i]->m.fd = export_fds[i];
+        MSG("Query buf #%d - exporting fd %d", i, export_fds[i]);
+      }
+      else if (src.memory == V4L2_MEMORY_MMAP) {
+        src.base_addr[i] = (unsigned int *) mmap(NULL, src.v4l2bufs[i]->length, PROT_READ | PROT_WRITE,
+               MAP_SHARED, m_fd, src.v4l2bufs[i]->m.offset);
+        if (!src.base_addr[i]) {
+          ERROR("mmap failed!");
+          sleep(2);
+        }
+        MSG("Length: %d\nAddress: %p", src.v4l2bufs[i]->length, src.base_addr[i]);
+      }
 
+      // print_v4l2buffer(src.v4l2bufs[i]);
+
+    }
     return true;
 }
+
+
 
 
 /*
@@ -217,19 +289,23 @@ bool VIPObj::queue_export_buf(int fd, int index){
 /*
 * Queue V4L2 buffer
 */
-bool VIPObj::queue_buf(int fd) {
-    struct v4l2_buffer buf;
+bool VIPObj::queue_buf(int fd, int index) {
+    struct v4l2_buffer *buf = NULL;
   	int			ret = -1;
-    // memset(&buf, 0, sizeof buf);
-  	// buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  	// buf.memory = V4L2_MEMORY_DMABUF;
-  	// buf.index = index;
-  	// buf.m.fd = fd;
-    for (int i=0; i<src.num_buffers; i++)
-      if (src.v4l2bufs[i].m.fd == fd)
-        buf = src.v4l2bufs[i];
-    print_v4l2buffer(&buf);
-    ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
+
+    if (src.memory == V4L2_MEMORY_MMAP) {
+      MSG("Queueing MMAP buffer");
+      for (int i=0; i<src.num_buffers; i++)
+        if (src.v4l2bufs[i]->index == (unsigned int) index)
+          buf = src.v4l2bufs[i];
+    }
+    else {
+      for (int i=0; i<src.num_buffers; i++)
+        if (src.v4l2bufs[i]->m.fd == fd)
+          buf = src.v4l2bufs[i];
+    }
+    // print_v4l2buffer(buf);
+    ret = ioctl(m_fd, VIDIOC_QBUF, buf);
 
     if (ret) {
         ERROR("VIDIOC_QBUF failed: %s (%d)", strerror(errno), ret);
@@ -251,7 +327,7 @@ int VIPObj::dequeue_buf(VPEObj *vpe){
     v4l2buf.type = src.type;
     v4l2buf.memory = src.memory;
     ret = ioctl(m_fd, VIDIOC_DQBUF, &v4l2buf);
-    print_v4l2buffer(&v4l2buf);
+    // print_v4l2buffer(&v4l2buf);
     MSG("m_fd is %d", m_fd);
     if (ret) {
         ERROR("VIDIOC_DQBUF failed: %s (%d)\n", strerror(errno), ret);
@@ -259,11 +335,6 @@ int VIPObj::dequeue_buf(VPEObj *vpe){
     }
     if (vpe)
       vpe->m_field = v4l2buf.field;
-
-
-    // if (src.v4l2bufs) {
-    //   src.v4l2bufs[v4l2buf.index].timestamp = v4l2buf.timestamp;
-    // }
 
     return v4l2buf.index;
 }
@@ -283,8 +354,6 @@ int VIPObj::dequeue_buf() {
         ERROR("VIDIOC_DQBUF failed: %s (%d)\n", strerror(errno), ret);
         return -1;
     }
-    //src.v4l2bufs[v4l2buf.index].timestamp = v4l2buf.timestamp;
-
     return v4l2buf.index;
 }
 

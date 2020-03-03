@@ -48,8 +48,14 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
+  bool usb = true;
 
-  vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+  if (usb) {
+    vip = VIPObj("/dev/video2", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
+  }
+  else {
+    vip = VIPObj("/dev/video1", src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
+  }
   vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
 
   frame_num = 0;
@@ -81,6 +87,7 @@ bool CamDisp::init_capture_pipeline(int alloc_fd) {
     exit(EXIT_FAILURE);
   }
 
+
   MSG("0x%x", (unsigned int) bo_vpe_in[0]);
   for (int i = 0; i < vip.src.num_buffers; i++) {
       bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
@@ -94,6 +101,11 @@ bool CamDisp::init_capture_pipeline(int alloc_fd) {
   		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
       // give the object a file descriptor for dmabuf v4l2 calls
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
+      if (vip.src.memory == V4L2_MEMORY_MMAP) {
+        bo_vpe_in[i]->bo_addr = (void **) calloc(4, sizeof(unsigned int));
+        bo_vpe_in[i]->bo_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+      }
+
       MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
       export_fds[i] = bo_vpe_in[i]->fd[0];
   }
@@ -121,7 +133,7 @@ bool CamDisp::init_capture_pipeline(int alloc_fd) {
   for (int i=0; i < vip.src.num_buffers; i++) {
     // for (int p=0;p<vip.src.num_buffers; p++)
     //   MSG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
-    if(!vip.queue_buf(bo_vpe_in[i]->fd[0])) {
+    if(!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
@@ -155,12 +167,14 @@ void *CamDisp::grab_image(DRMDeviceInfo *d) {
     if (stop_after_one) {
       vpe.output_qbuf(frame_num);
       frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in[frame_num]->fd[0]);
+      vip.queue_buf(bo_vpe_in[frame_num]->fd[0], frame_num);
     }
 
     /* dequeue the vip */
     frame_num = vip.dequeue_buf();
-
+    if (vip.src.memory == V4L2_MEMORY_MMAP) {
+      memcpy(bo_vpe_in[frame_num]->bo_addr[0], vip.src.base_addr[frame_num], vip.src.size);
+    }
     // if no display, then the api is not called
     if (d)
       d->disp_frame(frame_num);
@@ -179,9 +193,7 @@ void *CamDisp::grab_image(DRMDeviceInfo *d) {
     }
 
     /* Dequeue the frame of the ready data */
-    MSG("Dequeue beginning");
     frame_num = vpe.output_dqbuf();
-    MSG("Dequeue done");
 
     /**********DATA IS HERE!!************/
     void *imagedata = (void *)vpe.dst.base_addr[frame_num];

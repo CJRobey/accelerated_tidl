@@ -19,6 +19,7 @@ public:
 	 * the data in [1], [2], or [3]
 	 */
 	struct omap_bo **bo;
+	void **bo_addr;
 	uint32_t pitches[4];
 	int fd[4];		/* dmabuf */
 	unsigned fb_id;

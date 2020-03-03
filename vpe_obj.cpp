@@ -222,6 +222,7 @@ bool VPEObj::vpe_output_init()
       ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
       dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
              MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
+      // print_v4l2_plane_buffer(&v4l2buf);
 
       if (ret) {
           ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
@@ -292,7 +293,7 @@ bool VPEObj::output_qbuf(int index)
 	else
 		buf.length = 1;
 
-  print_v4l2buffer(&buf);
+  // print_v4l2buffer(&buf);
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
 	if (ret < 0) {
 		ERROR( "vpe o/p: QBUF failed: %s, index = %d\n",

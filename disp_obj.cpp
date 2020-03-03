@@ -635,7 +635,7 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
 		}
 		drmHandleEvent(fd, &evctx);
 	}
-  vip->queue_buf(exported_fds[frame_num]);
+  vip->queue_buf(exported_fds[frame_num], frame_num);
 }
 
 void DRMDeviceInfo::disp_frame(int frame_num) {
@@ -707,7 +707,7 @@ void DRMDeviceInfo::disp_frame(int frame_num) {
 //
 //   MSG("Successfully requested VIP buffers\n\n");
 //   for (int i=0; i<buffer_count; i++) {
-//     vip.queue_buf(export_fds[i]);
+//     vip.queue_buf(export_fds[i], i);
 //   }
 //   vip.stream_on();
 //   d.drm_init_dss(&vip);
