@@ -155,7 +155,7 @@ bool VPEObj::vpe_input_init()
 		ERROR( "%s: vpe i/p: REQBUFS failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
-	src.num_buffers = rqbufs.count;
+	m_num_buffers = rqbufs.count;
 
 	return true;
 
@@ -185,8 +185,6 @@ bool VPEObj::vpe_output_init()
   }
   dst.size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
   dst.size_uv = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
-  MSG("size %d", fmt.fmt.pix_mp.plane_fmt[0].sizeimage);
-  MSG("size_uv %d", fmt.fmt.pix_mp.plane_fmt[1].sizeimage);
 
 	ret = ioctl(m_fd, VIDIOC_G_FMT, &fmt);
 	if (ret < 0) {
@@ -199,7 +197,7 @@ bool VPEObj::vpe_output_init()
 			(char*)&fmt.fmt.pix_mp.pixelformat);
 
 	memset(&rqbufs, 0, sizeof(rqbufs));
-	rqbufs.count = NBUF;
+	rqbufs.count = m_num_buffers;
 	rqbufs.type = dst.type;
 	rqbufs.memory = dst.memory;
 
@@ -209,7 +207,7 @@ bool VPEObj::vpe_output_init()
     return false;
   }
 
-	dst.num_buffers = rqbufs.count;
+	m_num_buffers = rqbufs.count;
 
   if (dst.memory == V4L2_MEMORY_MMAP) {
     dst.base_addr = (unsigned int **) calloc(m_num_buffers, sizeof(unsigned int));
@@ -266,7 +264,7 @@ bool VPEObj::input_qbuf(int fd, int index){
   else {
     buf.m.fd = fd;
   }
-  gettimeofday(&buf.timestamp, NULL);
+  //gettimeofday(&buf.timestamp, NULL);
 
   int ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
   if (ret) {
@@ -276,7 +274,7 @@ bool VPEObj::input_qbuf(int fd, int index){
   return true;
 }
 
-bool VPEObj::output_qbuf(int fd, int index)
+bool VPEObj::output_qbuf(int index)
 {
 	int ret;
 	struct v4l2_buffer buf;
@@ -293,10 +291,8 @@ bool VPEObj::output_qbuf(int fd, int index)
 		buf.length = 2;
 	else
 		buf.length = 1;
-  if (dst.memory == V4L2_MEMORY_DMABUF)
-    buf.m.fd = fd;
-  gettimeofday(&buf.timestamp, NULL);
 
+  print_v4l2buffer(&buf);
 	ret = ioctl(m_fd, VIDIOC_QBUF, &buf);
 	if (ret < 0) {
 		ERROR( "vpe o/p: QBUF failed: %s, index = %d\n",
@@ -325,6 +321,7 @@ int VPEObj::input_dqbuf()
 		buf.length = 1;
 	ret = ioctl(m_fd, VIDIOC_DQBUF, &buf);
   if (ret < 0) {
+    printf("vpe o/p: QBUF failed: %s\n", strerror(errno));
     return -1;
   }
 	return buf.index;

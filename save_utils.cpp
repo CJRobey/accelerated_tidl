@@ -138,10 +138,10 @@ void write_binary_file(void *data, char *name, unsigned int size) {
   MSG("Saved file %s", name);
 }
 
-void print_v4l2buffer(v4l2_buffer v) {
+void print_v4l2buffer(v4l2_buffer *v) {
   string memory, type;
 
-  switch (v.memory) {
+  switch (v->memory) {
     case V4L2_MEMORY_MMAP:
       memory = "V4L2_MEMORY_MMAP";
       break;
@@ -153,7 +153,7 @@ void print_v4l2buffer(v4l2_buffer v) {
       break;
   }
 
-  switch (v.type) {
+  switch (v->type) {
     case V4L2_BUF_TYPE_VIDEO_CAPTURE:
       type = "V4L2_BUF_TYPE_VIDEO_CAPTURE";
       break;
@@ -169,10 +169,8 @@ void print_v4l2buffer(v4l2_buffer v) {
   }
   MSG("********V4L2 Buffer Status*********");
   MSG("memory: %s\ntype: %s\nindex: %d\nbytesused %d\n" \
-      "flags: 0x%x\nlength: %d\ntimestamp: %d" \
-      "\nfd: %d\noffset: %d", memory.c_str(), type.c_str(), (int) v.index,
-      (int) v.bytesused, (unsigned int) v.flags, (int) v.length,
-      (int) gettimeofday(&v.timestamp, NULL), (int) v.m.fd, (int) v.m.offset);
+      "flags: 0x%x\nlength: %d\nfd: %d\noffset: %d", memory.c_str(), type.c_str(), (int) v->index,
+      (int) v->bytesused, (unsigned int) v->flags, (int) v->length, (int) v->m.fd, (int) v->m.offset);
   MSG("\b***************END*****************\n");
 }
 

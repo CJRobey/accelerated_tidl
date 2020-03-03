@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include "v4l2_obj.h"
+#include "disp_obj.h"
 
 #include "save_utils.h"
 
@@ -35,7 +36,7 @@ class CamDisp {
 public:
   VIPObj vip;
   VPEObj vpe;
-  struct dmabuf_buffer *bo_vpe_in;
+  DmaBuffer **bo_vpe_in;
   int frame_num;
   int src_w;
   int src_h;
@@ -45,8 +46,8 @@ public:
 
   CamDisp();
   CamDisp(int src_w, int src_h, int dst_w, int dst_h);
-  bool init_capture_pipeline();
-  void *grab_image();
+  bool init_capture_pipeline(int alloc_fd);
+  void *grab_image(DRMDeviceInfo *d);
   void init_vpe_stream();
   void turn_off();
 

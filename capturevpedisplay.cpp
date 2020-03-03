@@ -56,30 +56,50 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h) {
 }
 
 
-bool CamDisp::init_capture_pipeline() {
+bool CamDisp::init_capture_pipeline(int alloc_fd) {
 
   vip.device_init();
   vpe.open_fd();
 
-  // Grab the omapdrm file descriptor
-  int alloc_fd = drmOpen("omapdrm", NULL);
-  // Configure the capture device
-  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
-  drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
-
-  // Create an "omap_device" from the fd
-  struct omap_device *dev = omap_device_new(alloc_fd);
-  bo_vpe_in = (dmabuf_buffer *) calloc(NBUF, sizeof(struct dmabuf_buffer));
-  for (int i = 0; i < vip.src.num_buffers; i++) {
-      // allocate space for buffer object (bo)
-      bo_vpe_in[i].bo = (omap_bo**) calloc(4, sizeof(omap_bo *));
-      // define the object
-  		bo_vpe_in[i].bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
-      // give the object a file descriptor for dmabuf v4l2 calls
-      bo_vpe_in[i].fd[0] = omap_bo_dmabuf(bo_vpe_in[i].bo[0]);
+  //JUST FOR TESTING
+  //alloc_fd = vpe.m_fd;
+  if (!alloc_fd) {
+    // Grab the omapdrm file descriptor
+    alloc_fd = drmOpen("omapdrm", NULL);
+    // Configure the capture device
+    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
   }
 
-  if(!vip.request_buf()) {
+  int export_fds[vip.src.num_buffers];
+  // Create an "omap_device" from the fd
+  struct omap_device *dev = omap_device_new(alloc_fd);
+  bo_vpe_in = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
+
+  if (!bo_vpe_in) {
+    MSG("mem failure, exiting \n");
+    exit(EXIT_FAILURE);
+  }
+
+  MSG("0x%x", (unsigned int) bo_vpe_in[0]);
+  for (int i = 0; i < vip.src.num_buffers; i++) {
+      bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+      bo_vpe_in[i]->width = src_w;
+      bo_vpe_in[i]->height = src_h;
+      bo_vpe_in[i]->fourcc = vip.src.fourcc;
+
+      // allocate space for buffer object (bo)
+      bo_vpe_in[i]->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
+      // define the object
+  		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+      // give the object a file descriptor for dmabuf v4l2 calls
+      bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
+      MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
+      export_fds[i] = bo_vpe_in[i]->fd[0];
+  }
+
+  if(!vip.request_export_buf(export_fds)) {
+  // if (!vip.request_buf()) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
@@ -91,22 +111,25 @@ bool CamDisp::init_capture_pipeline() {
   }
   MSG("Input layer initialization done\n");
 
+
   if(!vpe.vpe_output_init()) {
     ERROR("Output layer initialization failed.");
     return false;
   }
   MSG("Output layer initialization done\n");
 
-  for (int i=0; i < NBUF; i++) {
-    if(!vip.queue_buf(bo_vpe_in[i].fd[0], i)) {
+  for (int i=0; i < vip.src.num_buffers; i++) {
+    // for (int p=0;p<vip.src.num_buffers; p++)
+    //   MSG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
+    if(!vip.queue_buf(bo_vpe_in[i]->fd[0])) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
   }
   MSG("VIP initial buffer queues done\n");
 
-  for (int i=0; i < NBUF; i++) {
-    if(!vpe.output_qbuf(0, i)) {
+  for (int i=0; i < vpe.m_num_buffers; i++) {
+    if(!vpe.output_qbuf(i)) {
       ERROR(" initial queue VPE output buffer #%d failed", i);
       return false;
     }
@@ -115,6 +138,7 @@ bool CamDisp::init_capture_pipeline() {
 
   // begin streaming the capture through the VIP
   if (!vip.stream_on()) return false;
+  MSG("Streaming VIP");
 
   // begin streaming the output of the VPE
   if (!vpe.stream_on(1)) return false;
@@ -123,22 +147,26 @@ bool CamDisp::init_capture_pipeline() {
   return true;
 }
 
-void *CamDisp::grab_image() {
+void *CamDisp::grab_image(DRMDeviceInfo *d) {
     /* This step actually releases the frame back into the pipeline, but we
      * don't want to do this until the user calls for another frame. Otherwise,
      * the data pointed to by *imagedata could be corrupted.
      */
     if (stop_after_one) {
-      vpe.output_qbuf(0, frame_num);
+      vpe.output_qbuf(frame_num);
       frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in[frame_num].fd[0], frame_num);
+      vip.queue_buf(bo_vpe_in[frame_num]->fd[0]);
     }
 
     /* dequeue the vip */
-    frame_num = vip.dequeue_buf(&vpe);
+    frame_num = vip.dequeue_buf();
+
+    // if no display, then the api is not called
+    if (d)
+      d->disp_frame(frame_num);
 
     /* queue that frame onto the vpe */
-    if (!vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num)) {
+    if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
       ERROR("vpe input queue buffer failed");
       return NULL;
     }
@@ -151,7 +179,9 @@ void *CamDisp::grab_image() {
     }
 
     /* Dequeue the frame of the ready data */
+    MSG("Dequeue beginning");
     frame_num = vpe.output_dqbuf();
+    MSG("Dequeue done");
 
     /**********DATA IS HERE!!************/
     void *imagedata = (void *)vpe.dst.base_addr[frame_num];
@@ -164,13 +194,14 @@ void CamDisp::init_vpe_stream() {
   for (int i = 1; i <= NBUF; i++) {
     /* To star deinterlace, minimum 3 frames needed */
     if (vpe.m_deinterlace && count != 3) {
-      frame_num = vip.dequeue_buf(&vpe);
-      vpe.input_qbuf(bo_vpe_in[frame_num].fd[0], frame_num);
+      frame_num = vip.dequeue_buf();
+      vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num);
     }
     else {
       /* Begin streaming the input of the vpe */
       vpe.stream_on(0);
       stop_after_one = true;
+      return;
     }
   count ++;
   }
@@ -182,27 +213,45 @@ void CamDisp::turn_off() {
   vpe.stream_off(0);
 }
 
-/* Testing functionality: To use this, just type "make test" and then run
- * ./test - Make sure to uncomment this section beforehand if not already
+/* Testing functionality: To use this, just type "make test-vpe" and then run
+ * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment this section beforehand if not already
  * done.
  */
-int main() {
+
+int main(int argc, char *argv[]) {
   int cap_w = 800;
   int cap_h = 600;
   int model_w = 768;
   int model_h = 320;
   CamDisp cam(cap_w, cap_h, model_w, model_h);
-  cam.init_capture_pipeline();
 
+  DRMDeviceInfo drm_device;
+  drm_device.drm_init_device();
+
+  cam.init_capture_pipeline(drm_device.fd);
+
+  drm_device.export_buffer(cam.bo_vpe_in, cam.vpe.m_num_buffers);
   auto start = std::chrono::high_resolution_clock::now();
+
   int num_frames = 300;
-  for (int i=0; i<num_frames; i++)
-    cam.grab_image();
+  if (argc > 1){
+    num_frames = stoi(argv[1]);
+  }
+
+  drm_device.drm_init_dss(&cam.vip);
+  for (int i=0; i<num_frames; i++) {
+    if (argc <= 2)
+      cam.grab_image(&drm_device);
+    else
+      save_data(cam.grab_image(&drm_device), model_w, model_h, 3, 3);
+    //drm_device.disp_frame(NULL);
+  }
   auto stop = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
   MSG("******************");
   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-      model_w, model_h, (float) num_frames/(duration.count()/1000));
+
+  model_w, model_h, (float) num_frames/((float)duration.count()/1000));
   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
       duration.count()/1000);
   MSG("******************");

@@ -474,7 +474,7 @@ int DRMDeviceInfo::drm_init_device()
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(VIPObj *vip, int *export_fds)
+int DRMDeviceInfo::drm_init_dss(VIPObj *vip)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -684,36 +684,36 @@ void DRMDeviceInfo::disp_frame(int frame_num) {
 	}
 }
 
-int main() {
-
-  int buffer_count = 3;
-	DRMDeviceInfo d;
-	d.drm_init_device();
-  d.get_vid_buffers(0, buffer_count, V4L2_PIX_FMT_YUYV, 800, 600);
-
-  VIPObj vip = VIPObj("/dev/video1", 800, 600, FOURCC_STR("YUYV"), buffer_count, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-  vip.device_init();
-
-  int export_fds[buffer_count];
-  for (int i=0; i<buffer_count; i++) {
-    MSG("%d: fd %d", i, d.plane_data_buffer[0][i]->fd[0]);
-    export_fds[i] = d.plane_data_buffer[0][i]->fd[0];
-  }
-
-  if(!vip.request_export_buf(export_fds)) {
-    ERROR("VIP buffer requests failed.");
-    return false;
-  }
-
-  MSG("Successfully requested VIP buffers\n\n");
-  for (int i=0; i<buffer_count; i++) {
-    vip.queue_buf(export_fds[i]);
-  }
-  vip.stream_on();
-  d.drm_init_dss(&vip, export_fds);
-
-  for (int i=0; i<100; i++)
-    d.disp_frame(&vip, export_fds);
-
-	return 0;
-}
+// int main() {
+//
+//   int buffer_count = 3;
+// 	DRMDeviceInfo d;
+// 	d.drm_init_device();
+//   d.get_vid_buffers(0, buffer_count, V4L2_PIX_FMT_YUYV, 800, 600);
+//
+//   VIPObj vip = VIPObj("/dev/video1", 800, 600, FOURCC_STR("YUYV"), buffer_count, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+//   vip.device_init();
+//
+//   int export_fds[buffer_count];
+//   for (int i=0; i<buffer_count; i++) {
+//     MSG("%d: fd %d", i, d.plane_data_buffer[0][i]->fd[0]);
+//     export_fds[i] = d.plane_data_buffer[0][i]->fd[0];
+//   }
+//
+//   if(!vip.request_export_buf(export_fds)) {
+//     ERROR("VIP buffer requests failed.");
+//     return false;
+//   }
+//
+//   MSG("Successfully requested VIP buffers\n\n");
+//   for (int i=0; i<buffer_count; i++) {
+//     vip.queue_buf(export_fds[i]);
+//   }
+//   vip.stream_on();
+//   d.drm_init_dss(&vip);
+//
+//   for (int i=0; i<100; i++)
+//     d.disp_frame(&vip, export_fds);
+//
+// 	return 0;
+// }

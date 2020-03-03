@@ -61,10 +61,11 @@ public:
 	void drm_crtc_resolution();
 	void drm_restore_props();
 	int drm_init_device();
-	int drm_init_dss(VIPObj *vip, int *fd);
+	int drm_init_dss(VIPObj *vip);
 	void drm_exit_device();
 	void disp_frame(VIPObj *vip, int *fd);
 	void disp_frame(int frame_num);
+
 	int fd = 0;
 	int width;
 	int height;

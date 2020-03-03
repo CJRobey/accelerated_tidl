@@ -68,7 +68,7 @@ TST_SRC = disp_obj.cpp vpe_obj.cpp vip_obj.cpp save_utils.cpp
 REALTIME_SOURCES = main-multithread.cpp ../common/object_classes.cpp ../common/utils.cpp \
 	../common/video_utils.cpp
 
-TEST_SOURCES = vip_obj.cpp vpe_obj.cpp capturevpedisplay.cpp
+TEST_SOURCES = vip_obj.cpp vpe_obj.cpp capturevpedisplay.cpp save_utils.cpp disp_obj.cpp
 
 all: ssd_multibox ssd_multibox_realtime
 
