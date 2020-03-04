@@ -81,14 +81,15 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
 	if (buf->bo[0]){
 		bo_handles[0] = omap_bo_handle(buf->bo[0]);
 	}
-  MSG("bo new and handle done\n");
-
 	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
   print_omap_bo(buf->bo[0]);
 
   //print_omap_bo((buf->bo[0]));
 	ret = drmModeAddFB2(fd, buf->width, buf->height, fourcc,
 		bo_handles, buf->pitches, offsets, &buf->fb_id, 0);
+
+  buf->bo_addr = (void **) calloc(4, sizeof(unsigned int));
+  buf->bo_addr[0] = omap_bo_map(buf->bo[0]);
 
   MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd, buf->width, buf->height, fourcc);
   for (int i=0;i<4;i++)
@@ -262,7 +263,6 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip)
 	unsigned int crtc_h_val = height;
 	drmModeObjectProperties *props;
 	unsigned int _zorder_val = 1;
-	unsigned int buf_index;
 
 	for(i = 0; i < num_planes; i++){
 
@@ -290,12 +290,10 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip)
 		//storing zorder val to restore it before quitting the demo
 		zorder_val[i] = get_drm_prop_val(props, "zorder");
 
-		buf_index = i;
+    MSG("check plane data buffer at plane_data_buffer[%d]", i);
+    MSG("%p", plane_data_buffer[i][0]);
 
-    MSG("check plane data buffer at plane_data_buffer[%d]", buf_index);
-    MSG("%p", plane_data_buffer[buf_index][0]);
-
-		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[buf_index][0]->fb_id);
+		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[i][0]->fb_id);
 
 		//set the plane properties once. No need to set these values every time
 		//with the display of frame.
@@ -604,6 +602,9 @@ static void page_flip_handler(int fd, unsigned int frame,
 	(void) usec;
 }
 
+/* If the user would like this library to control the queue/dequeue of the
+ * capture device, use this function
+ */
 void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
   fd_set fds;
 	int ret, frame_num, waiting_for_flip = 1;
@@ -616,18 +617,19 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
 	};
   frame_num = vip->dequeue_buf(NULL);
 
-  buf[0] = plane_data_buffer[0][frame_num];
-
-  drmModeAtomicAddProperty(req, plane_id[0], prop_fbid, buf[0]->fb_id);
-  ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-
-  if(!ret){
-    drmModeAtomicCommit(fd, req,
-      DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
+  for (int i=0; i < (int) num_planes; i++) {
+    buf[i] = plane_data_buffer[i][frame_num];
+    drmModeAtomicAddProperty(req, plane_id[i], prop_fbid, buf[i]->fb_id);
+    ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
+    if(!ret){
+      drmModeAtomicCommit(fd, req,
+        DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
+    }
+    else {
+      ERROR("failed to add plane atomically: %s", strerror(errno));
+    }
   }
-  else {
-    ERROR("failed to add plane atomically: %s", strerror(errno));
-  }
+
 
 	drmModeAtomicFree(req);
 
@@ -652,6 +654,10 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
   vip->queue_buf(exported_fds[frame_num], frame_num);
 }
 
+
+/* If the user would like to control the queue/dequeue of the capture device in
+ * their application, use this function
+ */
 void DRMDeviceInfo::disp_frame(int frame_num) {
   fd_set fds;
 	int ret, waiting_for_flip = 1;
@@ -662,18 +668,18 @@ void DRMDeviceInfo::disp_frame(int frame_num) {
 		.vblank_handler = 0,
 		.page_flip_handler = page_flip_handler,
 	};
-  MSG("Dequeued once -> frame_num = %d", frame_num);
-  buf[0] = plane_data_buffer[0][frame_num];
 
-  drmModeAtomicAddProperty(req, plane_id[0], prop_fbid, buf[0]->fb_id);
-  ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-
-  if(!ret){
-    drmModeAtomicCommit(fd, req,
-      DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
-  }
-  else {
-    ERROR("failed to add plane atomically: %s", strerror(errno));
+  for (int i=0; i < (int) num_planes; i++) {
+    buf[i] = plane_data_buffer[i][frame_num];
+    drmModeAtomicAddProperty(req, plane_id[i], prop_fbid, buf[i]->fb_id);
+    ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
+    if(!ret){
+      drmModeAtomicCommit(fd, req,
+        DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
+    }
+    else {
+      ERROR("failed to add plane atomically: %s", strerror(errno));
+    }
   }
 
 	drmModeAtomicFree(req);

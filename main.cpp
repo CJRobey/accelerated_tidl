@@ -82,7 +82,7 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                CamDisp &cap, ifstream &ifs);
 bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam, unsigned int frame_num);
+                      const CamDisp& cam);
 static void DisplayHelp();
 
 /***************************************************************/
@@ -296,9 +296,10 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             ExecutionObjectPipeline* eop = eops[frame_idx % num_eops];
 
             // Wait for previous frame on the same eop to finish processing
-            if (eop->ProcessFrameWait())
-                WriteFrameOutput(*eop, c, opts, cam, frame_idx%3);
-                MSG("Writing frame num %d", frame_idx);
+            if (eop->ProcessFrameWait()) {
+                WriteFrameOutput(*eop, c, opts, cam);
+                cam.disp_frame();
+            }
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
             if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs)) {
@@ -356,14 +357,7 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     int channel_size = 768*320;
     char *input_data = (char *)malloc(channel_size*3);
 
-    /* Less efficient method */
-    // for (int i = 0; i < channel_size; i++) {
-    //   input_data[i] = in_ptr[i];
-    //   input_data[i+channel_size] = in_ptr[channel_size+i];
-    //   input_data[i+(2*channel_size)] = in_ptr[(2*channel_size)+i];
-    // }
-
-    /* More efficient method */
+    /* More efficient method after testing */
     Mat pic(cvSize(768, 320), CV_8UC3, in_ptr);
     Mat channels[3];
     split(pic, channels);
@@ -386,21 +380,22 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 // Create frame with boxes drawn around classified objects
 bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam, unsigned int frame_num)
+                      const CamDisp& cam)
 {
     // Asseemble original frame
     int width  = c.inWidth;
     int height = c.inHeight;
+    float confidence_value = 35;
     // int channel_size = width * height;
-    Mat frame, bgr[3];
+    Mat frame;
 
-    // unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
-    // bgr[0] = Mat(height, width, CV_8UC(1), in);
-    // bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
-    // bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
-    // cv::merge(bgr, 3, frame);
+    /* omap_bo_map is grabbing the pointer to the memory allocated by plane #2
+     * of the DSS. It then writes over that plane as it waits to be displayed.
+     */
 
-    frame = Mat(height, width, CV_8UC4, omap_bo_map(cam.drm_device.plane_data_buffer[1][frame_num]->bo[0]));
+    // clear the old rectangles
+    memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->bo_addr[0], 0, height*width*4);
+    frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->bo_addr[0]);
 
     int frame_index = eop.GetFrameIndex();
     char outfile_name[64];
@@ -420,7 +415,7 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
         if (index < 0)  break;
 
         float score =        out[i * 7 + 2];
-        // if (score * 100 < confidence_value)  continue;
+        if (score * 100 < confidence_value)  continue;
 
         int   label = (int)  out[i * 7 + 1];
         int   xmin  = (int) (out[i * 7 + 3] * width);
@@ -430,20 +425,38 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
 
         const ObjectClass& object_class = object_classes->At(label);
 
+        int thickness = 1;
+        double scale = 0.6;
+        int baseline = 0;
+
+        Size text_size = getTextSize(object_class.label, FONT_HERSHEY_DUPLEX, scale,
+                                    thickness, &baseline);
+        baseline += thickness;
+
         if(opts.verbose) {
             printf("%2d: (%d, %d) -> (%d, %d): %s, score=%f\n",
                i, xmin, ymin, xmax, ymax, object_class.label.c_str(), score);
         }
 
+        int alpha = 255;
         if (xmin < 0)       xmin = 0;
         if (ymin < 0)       ymin = 0;
         if (xmax > width)   xmax = width;
         if (ymax > height)  ymax = height;
         cv::rectangle(frame, Point(xmin, ymin), Point(xmax, ymax),
-                      Scalar(object_class.color.blue,
+                      Scalar(alpha, object_class.color.blue,
                              object_class.color.green,
                              object_class.color.red), 2);
-        // MSG("rectangles drawn %p", &frame);
+
+       // place the name of the class at the botton of the box
+       cv::rectangle(frame, Point(xmin,ymax) + Point(0, baseline),
+             Point(xmin,ymax) + Point(text_size.width,
+             -text_size.height) , Scalar(alpha, 0,0,0), -1);
+       cv::putText(frame, object_class.label, Point(xmin,ymax),
+                   FONT_HERSHEY_DUPLEX, scale, Scalar(alpha, 255,255,255), thickness);
+
+        MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(), object_class.color.blue,
+            object_class.color.green, object_class.color.red);
     }
 
     if (opts.is_camera_input || opts.is_video_input)
