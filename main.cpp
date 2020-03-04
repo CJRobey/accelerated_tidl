@@ -80,7 +80,7 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
 bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap, ifstream &ifs);
-bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
+bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
                       const CamDisp& cam);
 static void DisplayHelp();
@@ -292,7 +292,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait()) {
-                WriteFrameOutput(*eop, c, opts, cam);
+                WriteFrameOutputSSD(*eop, c, opts, cam);
                 cam.disp_frame();
             }
             // Read a frame and start processing it with current eo
@@ -365,7 +365,7 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 }
 
 // Create frame with boxes drawn around classified objects
-bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
+bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
                       const CamDisp& cam)
 {
