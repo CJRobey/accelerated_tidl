@@ -254,7 +254,8 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 }
 
 
-void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip)
+void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
+                                           int alpha, VIPObj *vip)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -314,8 +315,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req, VIPObj *vip)
     }
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
     // Set global_alpha value if needed
-    if (i)
-  		add_property(fd, req, props, plane_id[i], "global_alpha", 150);
+    if (alpha)
+  		add_property(fd, req, props, plane_id[i], "global_alpha", alpha);
 	}
 }
 
@@ -485,7 +486,7 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(VIPObj *vip)
+int DRMDeviceInfo::drm_init_dss(VIPObj *vip, int alpha)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -549,12 +550,9 @@ int DRMDeviceInfo::drm_init_dss(VIPObj *vip)
 	add_property(fd, req, props, crtc_id,
 		"zorder", 0);
 
-  MSG("drm_add_plane_property beginning");
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
-	drm_add_plane_property(req, vip);
-  MSG("added plane properties");
-  MSG("drm_add_plane_property done");
+	drm_add_plane_property(req, alpha, vip);
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
