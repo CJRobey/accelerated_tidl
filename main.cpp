@@ -170,16 +170,11 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     if (opts.num_eves == 0 || opts.num_dsps == 0)
         c.runFullNet = true;
 
-    //namedWindow("SSD_Multibox", WINDOW_AUTOSIZE | CV_GUI_NORMAL);
-    // if (opts.is_camera_input || opts.is_video_input)
-    // {
-    //     std::string TrackbarName("Confidence(%):");
-    //     createTrackbar( TrackbarName.c_str(), "SSD_Multibox",
-    //                     &prob_slider, 100, on_trackbar );
-    //     std::cout << TrackbarName << std::endl;
-    // }
-
-    CamDisp cam(800, 600, c.inWidth, c.inHeight, "/dev/video2", true);
+    /* This represents the alpha value of the second plane. 0 makes it clear
+     * and 255 makes it opaque
+     */
+    int alpha_value = 255;
+    CamDisp cam(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2", true);
     cam.init_capture_pipeline();
 
     // setup preprocessed input
@@ -283,7 +278,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         uint32_t num_eops = eops.size();
 
         // Allocate input/output memory for each EOP
-        // AllocateMemory(eops);
+        AllocateMemory(eops);
 
         chrono::time_point<chrono::steady_clock> tloop0, tloop1;
         tloop0 = chrono::steady_clock::now();
@@ -354,25 +349,17 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 
     eop.SetFrameIndex(frame_idx);
     char *in_ptr = (char *) cap.grab_image();
-    int channel_size = 768*320;
-    char *input_data = (char *)malloc(channel_size*3);
+    int channel_size = c.inWidth*c.inHeight;
 
     /* More efficient method after testing */
-    Mat pic(cvSize(768, 320), CV_8UC3, in_ptr);
+    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC3, in_ptr);
     Mat channels[3];
     split(pic, channels);
-    memcpy(input_data, channels[0].ptr(), channel_size);
-    memcpy(input_data+channel_size, channels[1].ptr(), channel_size);
-    memcpy(input_data+(2*channel_size), channels[2].ptr(), channel_size);
-
-    ArgInfo in = {ArgInfo(input_data, 768*320*3)};
-    void* out_ptr = eop.GetOutputBufferPtr();
-    if (out_ptr == nullptr) {
-      out_ptr = malloc(eop.GetOutputBufferSizeInBytes());
-    }
-    ArgInfo out = {ArgInfo(out_ptr, eop.GetOutputBufferSizeInBytes())};
-    eop.SetInputOutputBuffer(in, out);
     char*  frame_buffer = eop.GetInputBufferPtr();
+    memcpy(frame_buffer, channels[0].ptr(), channel_size);
+    memcpy(frame_buffer+channel_size, channels[1].ptr(), channel_size);
+    memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
+
     assert (frame_buffer != nullptr);
     return true;
 }
@@ -394,8 +381,14 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
      */
 
     // clear the old rectangles
-    memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->bo_addr[0], 0, height*width*4);
-    frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->bo_addr[0]);
+    memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0], 0, height*width*4);
+
+    /* Data is being read in as abgr - thus the user may control the alpha
+     * values either from this write function or by passing in the alpha value
+     * to the initializer of the CamDisp object. Value go from 0 (totally clear)
+     * to 255 (opaque)
+     */
+    frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0]);
 
     int frame_index = eop.GetFrameIndex();
     char outfile_name[64];
