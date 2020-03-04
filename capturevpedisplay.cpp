@@ -159,6 +159,10 @@ bool CamDisp::init_capture_pipeline() {
   return true;
 }
 
+void CamDisp::disp_frame() {
+  drm_device.disp_frame(vip_frame_num);
+}
+
 void *CamDisp::grab_image() {
     /* This step actually releases the frame back into the pipeline, but we
      * don't want to do this until the user calls for another frame. Otherwise,
@@ -176,8 +180,7 @@ void *CamDisp::grab_image() {
       memcpy(bo_vpe_in[frame_num]->bo_addr[0], vip.src.base_addr[frame_num], vip.src.size);
     }
     // if no display, then the api is not called
-
-    drm_device.disp_frame(frame_num);
+    vip_frame_num = frame_num;
 
     /* queue that frame onto the vpe */
     if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
