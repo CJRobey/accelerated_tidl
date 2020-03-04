@@ -82,7 +82,7 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                CamDisp &cap, ifstream &ifs);
 bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      float confidence_value);
+                      const CamDisp& cam, unsigned int frame_num);
 static void DisplayHelp();
 
 /***************************************************************/
@@ -297,7 +297,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait())
-                //WriteFrameOutput(*eop, c, opts, (float)prob_slider);
+                WriteFrameOutput(*eop, c, opts, cam, frame_idx%3);
                 MSG("Writing frame num %d", frame_idx);
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
@@ -385,19 +385,22 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 
 // Create frame with boxes drawn around classified objects
 bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
-                      const Configuration& c, const cmdline_opts_t& opts, float confidence_value)
+                      const Configuration& c, const cmdline_opts_t& opts,
+                      const CamDisp& cam, unsigned int frame_num)
 {
     // Asseemble original frame
     int width  = c.inWidth;
     int height = c.inHeight;
-    int channel_size = width * height;
+    // int channel_size = width * height;
     Mat frame, bgr[3];
 
-    unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
-    bgr[0] = Mat(height, width, CV_8UC(1), in);
-    bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
-    bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
-    cv::merge(bgr, 3, frame);
+    // unsigned char *in = (unsigned char *) eop.GetInputBufferPtr();
+    // bgr[0] = Mat(height, width, CV_8UC(1), in);
+    // bgr[1] = Mat(height, width, CV_8UC(1), in + channel_size);
+    // bgr[2] = Mat(height, width, CV_8UC(1), in + channel_size*2);
+    // cv::merge(bgr, 3, frame);
+
+    frame = Mat(height, width, CV_8UC4, omap_bo_map(cam.drm_device.plane_data_buffer[1][frame_num]->bo[0]));
 
     int frame_index = eop.GetFrameIndex();
     char outfile_name[64];
@@ -417,7 +420,7 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
         if (index < 0)  break;
 
         float score =        out[i * 7 + 2];
-        if (score * 100 < confidence_value)  continue;
+        // if (score * 100 < confidence_value)  continue;
 
         int   label = (int)  out[i * 7 + 1];
         int   xmin  = (int) (out[i * 7 + 3] * width);
@@ -440,11 +443,12 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
                       Scalar(object_class.color.blue,
                              object_class.color.green,
                              object_class.color.red), 2);
+        // MSG("rectangles drawn %p", &frame);
     }
 
     if (opts.is_camera_input || opts.is_video_input)
     {
-        cv::imshow("SSD_Multibox", frame);
+        // cv::imshow("SSD_Multibox", frame);
 #ifdef DEBUG_FILES
         // Image files can be converted into video using, example script
         // (on desktop Ubuntu, with ffmpeg installed):

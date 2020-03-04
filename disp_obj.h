@@ -42,11 +42,13 @@ public:
 class DRMDeviceInfo
 {
 public:
-  DmaBuffer *alloc_buffer();
+	DmaBuffer *alloc_buffer(unsigned int fourcc, unsigned int w,
+								          unsigned int h, unsigned int n, unsigned int bytes_pp);
 	void free_vid_buffers(unsigned int channel);
-	bool get_vid_buffers(unsigned int channel, unsigned int _n,
-			unsigned int _fourcc, unsigned int _w, unsigned int _h);
-	bool export_buffer(DmaBuffer **db, int num_bufs);
+	bool get_vid_buffers(unsigned int _n, unsigned int _fourcc, unsigned int _w,
+											 unsigned int _h, unsigned int channel,
+											 unsigned int bytes_pp);
+	bool export_buffer(DmaBuffer **db, int num_bufs, int bytes_pp, int channel_number);
   DRMDeviceInfo();
 	~DRMDeviceInfo();
 
@@ -61,7 +63,7 @@ public:
 	unsigned int drm_reserve_plane(unsigned int *ptr_plane_id, int num_planes);
 	void drm_crtc_resolution();
 	void drm_restore_props();
-	int drm_init_device();
+	int drm_init_device(int num_planes);
 	int drm_init_dss(VIPObj *vip);
 	void drm_exit_device();
 	void disp_frame(VIPObj *vip, int *fd);
@@ -70,10 +72,6 @@ public:
 	int fd = 0;
 	int width;
 	int height;
-	unsigned int w;
-	unsigned int h;
-	unsigned int fourcc;
-	unsigned int n;
 	bool use_cmem = false;
 	char dev_name[9];
 	char name[4];
@@ -82,6 +80,7 @@ public:
 	/* There are two buffers for the two planes that will exist in the DSS
 	 * plane_data_buffer[0]
 	 */
+	unsigned int num_buffers[2];
 	DmaBuffer **plane_data_buffer[2];
 	struct omap_device *dev;
 	unsigned int crtc_id;
@@ -93,7 +92,7 @@ public:
 	uint32_t zorder_val[MAX_DRM_PLANES-1];
 
   unsigned int main_cam;
-  unsigned int num_cams;
+  unsigned int num_planes = 0;
   unsigned int num_jpeg;
   unsigned int display_xres, display_yres;
   bool pip;

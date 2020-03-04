@@ -65,7 +65,8 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h,
 
 bool CamDisp::init_capture_pipeline() {
 
-  drm_device.drm_init_device();
+  int num_planes = 2;
+  drm_device.drm_init_device(num_planes);
   vip.device_init();
   vpe.open_fd();
 
@@ -148,8 +149,11 @@ bool CamDisp::init_capture_pipeline() {
   if (!vpe.stream_on(1)) return false;
 
   vpe.m_field = V4L2_FIELD_ANY;
-  drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers);
+  drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers, 2, 0);
+
+  drm_device.get_vid_buffers(3, FOURCC_STR("RA24"), dst_w, dst_h, 4, 1);
   drm_device.drm_init_dss(&vip);
+
 
 
   return true;
