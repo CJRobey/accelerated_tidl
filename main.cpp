@@ -88,12 +88,12 @@ static void DisplayHelp();
 /***************************************************************/
 /* Slider to control detection confidence level                */
 /***************************************************************/
-static void on_trackbar( int slider_id, void *inst )
-{
-  //This function is invoked on every slider move.
-  //No action required, since prob_slider is automatically updated.
-  //But, for any additional operation on slider move, this is the place to insert code.
-}
+// static void on_trackbar( int slider_id, void *inst )
+// {
+//   //This function is invoked on every slider move.
+//   //No action required, since prob_slider is automatically updated.
+//   //But, for any additional operation on slider move, this is the place to insert code.
+// }
 
 int main(int argc, char *argv[])
 {
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 
 bool RunConfiguration(const cmdline_opts_t& opts)
 {
-    int prob_slider     = opts.output_prob_threshold;
+    // int prob_slider     = opts.output_prob_threshold;
     // Read the TI DL configuration file
     Configuration c;
     std::string config_file = "../test/testvecs/config/infer/tidl_config_"
@@ -170,16 +170,16 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     if (opts.num_eves == 0 || opts.num_dsps == 0)
         c.runFullNet = true;
 
-    namedWindow("SSD_Multibox", WINDOW_AUTOSIZE | CV_GUI_NORMAL);
-    if (opts.is_camera_input || opts.is_video_input)
-    {
-        std::string TrackbarName("Confidence(%):");
-        createTrackbar( TrackbarName.c_str(), "SSD_Multibox",
-                        &prob_slider, 100, on_trackbar );
-        std::cout << TrackbarName << std::endl;
-    }
+    //namedWindow("SSD_Multibox", WINDOW_AUTOSIZE | CV_GUI_NORMAL);
+    // if (opts.is_camera_input || opts.is_video_input)
+    // {
+    //     std::string TrackbarName("Confidence(%):");
+    //     createTrackbar( TrackbarName.c_str(), "SSD_Multibox",
+    //                     &prob_slider, 100, on_trackbar );
+    //     std::cout << TrackbarName << std::endl;
+    // }
 
-    CamDisp cam(800, 600, c.inWidth, c.inHeight);
+    CamDisp cam(800, 600, c.inWidth, c.inHeight, "/dev/video2", true);
     cam.init_capture_pipeline();
 
     // setup preprocessed input
@@ -297,8 +297,8 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait())
-                WriteFrameOutput(*eop, c, opts, (float)prob_slider);
-
+                //WriteFrameOutput(*eop, c, opts, (float)prob_slider);
+                MSG("Writing frame num %d", frame_idx);
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
             if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs)) {

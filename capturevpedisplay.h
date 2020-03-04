@@ -37,6 +37,7 @@ public:
   VIPObj vip;
   VPEObj vpe;
   DmaBuffer **bo_vpe_in;
+  DRMDeviceInfo drm_device;
   int frame_num;
   int src_w;
   int src_h;
@@ -47,8 +48,8 @@ public:
 
   CamDisp();
   CamDisp(int src_w, int src_h, int dst_w, int dst_h, std::string dev_name, bool usb);
-  bool init_capture_pipeline(int alloc_fd);
-  void *grab_image(DRMDeviceInfo *d);
+  bool init_capture_pipeline();
+  void *grab_image();
   void init_vpe_stream();
   void turn_off();
 

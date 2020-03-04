@@ -63,24 +63,15 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h,
 }
 
 
-bool CamDisp::init_capture_pipeline(int alloc_fd) {
+bool CamDisp::init_capture_pipeline() {
 
+  drm_device.drm_init_device();
   vip.device_init();
   vpe.open_fd();
 
-  //JUST FOR TESTING
-  //alloc_fd = vpe.m_fd;
-  if (!alloc_fd) {
-    // Grab the omapdrm file descriptor
-    alloc_fd = drmOpen("omapdrm", NULL);
-    // Configure the capture device
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
-    drmSetClientCap(alloc_fd, DRM_CLIENT_CAP_ATOMIC, 1);
-  }
-
   int export_fds[vip.src.num_buffers];
   // Create an "omap_device" from the fd
-  struct omap_device *dev = omap_device_new(alloc_fd);
+  struct omap_device *dev = omap_device_new(drm_device.fd);
   bo_vpe_in = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
 
   if (!bo_vpe_in) {
@@ -157,10 +148,14 @@ bool CamDisp::init_capture_pipeline(int alloc_fd) {
   if (!vpe.stream_on(1)) return false;
 
   vpe.m_field = V4L2_FIELD_ANY;
+  drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers);
+  drm_device.drm_init_dss(&vip);
+
+
   return true;
 }
 
-void *CamDisp::grab_image(DRMDeviceInfo *d) {
+void *CamDisp::grab_image() {
     /* This step actually releases the frame back into the pipeline, but we
      * don't want to do this until the user calls for another frame. Otherwise,
      * the data pointed to by *imagedata could be corrupted.
@@ -177,8 +172,8 @@ void *CamDisp::grab_image(DRMDeviceInfo *d) {
       memcpy(bo_vpe_in[frame_num]->bo_addr[0], vip.src.base_addr[frame_num], vip.src.size);
     }
     // if no display, then the api is not called
-    if (d)
-      d->disp_frame(frame_num);
+
+    drm_device.disp_frame(frame_num);
 
     /* queue that frame onto the vpe */
     if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
@@ -230,46 +225,46 @@ void CamDisp::turn_off() {
  * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment the
  * "main" section beforehand if not already done.
  */
-
-int main(int argc, char *argv[]) {
-  int cap_w = 800;
-  int cap_h = 600;
-  int model_w = 768;
-  int model_h = 320;
-
-  // capture w, capture h, output w, output h, device name, is usb?
-  CamDisp cam(cap_w, cap_h, model_w, model_h, "/dev/video2", true);
-
-  // This is the display object
-  DRMDeviceInfo drm_device;
-  drm_device.drm_init_device();
-
-  cam.init_capture_pipeline(drm_device.fd);
-
-  drm_device.export_buffer(cam.bo_vpe_in, cam.vpe.m_num_buffers);
-  auto start = std::chrono::high_resolution_clock::now();
-
-  int num_frames = 300;
-  if (argc > 1){
-    num_frames = stoi(argv[1]);
-  }
-
-  drm_device.drm_init_dss(&cam.vip);
-  for (int i=0; i<num_frames; i++) {
-    if (argc <= 2)
-      cam.grab_image(&drm_device);
-    else
-      save_data(cam.grab_image(&drm_device), model_w, model_h, 3, 3);
-    //drm_device.disp_frame(NULL);
-  }
-  auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  MSG("******************");
-  MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-
-  model_w, model_h, (float) num_frames/((float)duration.count()/1000));
-  MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
-      duration.count()/1000);
-  MSG("******************");
-  cam.turn_off();
-}
+//
+// int main(int argc, char *argv[]) {
+//   int cap_w = 800;
+//   int cap_h = 600;
+//   int model_w = 768;
+//   int model_h = 320;
+//
+//   // capture w, capture h, output w, output h, device name, is usb?
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, "/dev/video2", true);
+//
+//   // This is the display object
+//   DRMDeviceInfo drm_device;
+//   drm_device.drm_init_device();
+//
+//   cam.init_capture_pipeline(drm_device.fd);
+//
+//   drm_device.export_buffer(cam.bo_vpe_in, cam.vpe.m_num_buffers);
+//   auto start = std::chrono::high_resolution_clock::now();
+//
+//   int num_frames = 300;
+//   if (argc > 1){
+//     num_frames = stoi(argv[1]);
+//   }
+//
+//   drm_device.drm_init_dss(&cam.vip);
+//   for (int i=0; i<num_frames; i++) {
+//     if (argc <= 2)
+//       cam.grab_image(&drm_device);
+//     else
+//       save_data(cam.grab_image(&drm_device), model_w, model_h, 3, 3);
+//     //drm_device.disp_frame(NULL);
+//   }
+//   auto stop = std::chrono::high_resolution_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+//   MSG("******************");
+//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+//
+//   model_w, model_h, (float) num_frames/((float)duration.count()/1000));
+//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+//       duration.count()/1000);
+//   MSG("******************");
+//   cam.turn_off();
+// }
