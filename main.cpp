@@ -385,7 +385,7 @@ bool WriteFrameOutput(const ExecutionObjectPipeline& eop,
     // Asseemble original frame
     int width  = c.inWidth;
     int height = c.inHeight;
-    float confidence_value = 35;
+    float confidence_value = 30;
     // int channel_size = width * height;
     Mat frame;
 

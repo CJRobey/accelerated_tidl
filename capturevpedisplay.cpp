@@ -65,7 +65,12 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h,
 
 bool CamDisp::init_capture_pipeline() {
 
+  /* set num_planes to 1 for no output layer and num_planes to 2 for the output
+   * layer to be shown
+   */
   int num_planes = 2;
+  int alpha = 255;
+
   drm_device.drm_init_device(num_planes);
   vip.device_init();
   vpe.open_fd();
@@ -152,7 +157,7 @@ bool CamDisp::init_capture_pipeline() {
   drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers, 2, 0);
 
   drm_device.get_vid_buffers(3, FOURCC_STR("RA24"), dst_w, dst_h, 4, 1);
-  drm_device.drm_init_dss(&vip);
+  drm_device.drm_init_dss(&vip, alpha);
 
 
 
