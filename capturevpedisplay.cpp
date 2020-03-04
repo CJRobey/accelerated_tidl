@@ -80,12 +80,10 @@ bool CamDisp::init_capture_pipeline() {
   bo_vpe_in = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
 
   if (!bo_vpe_in) {
-    MSG("mem failure, exiting \n");
+    ERROR("memory allocation failure, exiting \n");
     exit(EXIT_FAILURE);
   }
 
-
-  MSG("0x%x", (unsigned int) bo_vpe_in[0]);
   for (int i = 0; i < vip.src.num_buffers; i++) {
       bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
       bo_vpe_in[i]->width = src_w;
