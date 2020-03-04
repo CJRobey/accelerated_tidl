@@ -39,18 +39,19 @@ CamDisp::CamDisp() {
   src_h = CAP_HEIGHT;
   dst_w = TIDL_MODEL_WIDTH;
   dst_h = TIDL_MODEL_HEIGHT;
+  alpha = 255;
   frame_num = 0;
   usb = true;
 }
 
 
-CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h,
+CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
   string dev_name, bool usb) {
   src_w = _src_w;
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
-
+  alpha = _alpha;
   if (usb) {
     vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
   }
@@ -69,8 +70,6 @@ bool CamDisp::init_capture_pipeline() {
    * layer to be shown
    */
   int num_planes = 2;
-  int alpha = 255;
-
   drm_device.drm_init_device(num_planes);
   vip.device_init();
   vpe.open_fd();
@@ -100,8 +99,8 @@ bool CamDisp::init_capture_pipeline() {
       // give the object a file descriptor for dmabuf v4l2 calls
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
       if (vip.src.memory == V4L2_MEMORY_MMAP) {
-        bo_vpe_in[i]->bo_addr = (void **) calloc(4, sizeof(unsigned int));
-        bo_vpe_in[i]->bo_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+        bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+        bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
       }
 
       MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
@@ -182,7 +181,7 @@ void *CamDisp::grab_image() {
     /* dequeue the vip */
     frame_num = vip.dequeue_buf();
     if (vip.src.memory == V4L2_MEMORY_MMAP) {
-      memcpy(bo_vpe_in[frame_num]->bo_addr[0], vip.src.base_addr[frame_num], vip.src.size);
+      memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0], vip.src.base_addr[frame_num], vip.src.size);
     }
     // if no display, then the api is not called
     vip_frame_num = frame_num;
@@ -237,7 +236,7 @@ void CamDisp::turn_off() {
  * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment the
  * "main" section beforehand if not already done.
  */
-//
+
 // int main(int argc, char *argv[]) {
 //   int cap_w = 800;
 //   int cap_h = 600;
