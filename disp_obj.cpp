@@ -42,10 +42,12 @@ DRMDeviceInfo::DRMDeviceInfo() {
 	bo_flags = OMAP_BO_SCANOUT;
 	fd = 0;
 }
+
+
 DRMDeviceInfo::~DRMDeviceInfo() {
-	MSG("And so it ends...");
   for (unsigned int i=0;i<num_planes;i++)
     free_vid_buffers(i);
+  MSG("And so it ends...");
 }
 
 /* If the use case need the buffer to be accessed by CPU for some processings,
@@ -88,8 +90,8 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
 	ret = drmModeAddFB2(fd, buf->width, buf->height, fourcc,
 		bo_handles, buf->pitches, offsets, &buf->fb_id, 0);
 
-  buf->bo_addr = (void **) calloc(4, sizeof(unsigned int));
-  buf->bo_addr[0] = omap_bo_map(buf->bo[0]);
+  buf->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+  buf->buf_mem_addr[0] = omap_bo_map(buf->bo[0]);
 
   MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd, buf->width, buf->height, fourcc);
   for (int i=0;i<4;i++)
