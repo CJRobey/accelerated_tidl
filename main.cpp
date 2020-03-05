@@ -59,11 +59,17 @@ using namespace chrono;
 
 
 #define NUM_VIDEO_FRAMES  100
-#define DEFAULT_CONFIG    "jdetnet_voc"
-#define DEFAULT_INPUT     "../test/testvecs/input/horse_768x320.y"
-#define DEFAULT_INPUT_FRAMES (1)
-#define DEFAULT_OBJECT_CLASSES_LIST_FILE "./jdetnet_voc_objects.json"
-#define DEFAULT_OUTPUT_PROB_THRESHOLD  25
+#define SSD_DEFAULT_CONFIG    "jdetnet_voc"
+#define SSD_DEFAULT_INPUT     "../test/testvecs/input/horse_768x320.y"
+#define SSD_DEFAULT_INPUT_FRAMES (1)
+#define SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE "./jdetnet_voc_objects.json"
+#define SSD_DEFAULT_OUTPUT_PROB_THRESHOLD  25
+
+#define SEG_NUM_VIDEO_FRAMES  300
+#define SEG_DEFAULT_CONFIG    "jseg21_tiscapes"
+#define SEG_DEFAULT_INPUT     "../test/testvecs/input/000100_1024x512_bgr.y"
+#define SEG_DEFAULT_INPUT_FRAMES  (9)
+#define SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE "jseg21_objects.json"
 
 /* Enable this macro to record individual output files and */
 /* resized, cropped network input files                    */
@@ -77,13 +83,24 @@ uint32_t num_frames_file;
 bool RunConfiguration(const cmdline_opts_t& opts);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
                          int layers_group_id);
+Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c);
 bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap, ifstream &ifs);
+bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+              const Configuration& c, const cmdline_opts_t& opts,
+              CamDisp &cap, ifstream &ifs);
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
                       const CamDisp& cam);
+// Create frame overlayed with pixel-level segmentation
+bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
+                      const Configuration& c,
+                      const cmdline_opts_t& opts, const CamDisp& cam);
+
 static void DisplayHelp();
+void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
+                int channel_size);
 
 /***************************************************************/
 /* Slider to control detection confidence level                */
@@ -113,23 +130,36 @@ int main(int argc, char *argv[])
 
     // Process arguments
     cmdline_opts_t opts;
-    opts.config = DEFAULT_CONFIG;
-    opts.object_classes_list_file = DEFAULT_OBJECT_CLASSES_LIST_FILE;
-    opts.num_eves = num_eves > 0 ? 1 : 0;
-    opts.num_dsps = num_dsps > 0 ? 1 : 0;
-    opts.input_file = DEFAULT_INPUT;
-    opts.output_prob_threshold = DEFAULT_OUTPUT_PROB_THRESHOLD;
+
+    // choose the defaults based on the kind of network
+    if (!strcmp(argv[1],"ssd")) {
+      opts.config = SSD_DEFAULT_CONFIG;
+      opts.object_classes_list_file = SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE;
+      opts.num_eves = num_eves > 0 ? 1 : 0;
+      opts.num_dsps = num_dsps > 0 ? 1 : 0;
+      opts.input_file = SSD_DEFAULT_INPUT;
+      opts.output_prob_threshold = SSD_DEFAULT_OUTPUT_PROB_THRESHOLD;
+    }
+    else {
+      opts.config = SEG_DEFAULT_CONFIG;
+      opts.object_classes_list_file = SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE;
+      if (num_eves != 0) { opts.num_eves = 1;  opts.num_dsps = 0; }
+      else               { opts.num_eves = 0;  opts.num_dsps = 1; }
+
+    }
+
     if (! ProcessArgs(argc, argv, opts))
     {
         DisplayHelp();
         exit(EXIT_SUCCESS);
     }
+
     assert(opts.num_dsps != 0 || opts.num_eves != 0);
     if (opts.num_frames == 0)
         opts.num_frames = (opts.is_camera_input || opts.is_video_input) ?
                           NUM_VIDEO_FRAMES :
-                          ((opts.input_file == DEFAULT_INPUT) ?
-                           DEFAULT_INPUT_FRAMES : 1);
+                          ((opts.input_file == SEG_DEFAULT_INPUT) ?
+                           SEG_DEFAULT_INPUT_FRAMES : 1);
     cout << "Input: " << opts.input_file << endl;
 
     // Get object classes list
@@ -145,11 +175,11 @@ int main(int argc, char *argv[])
     bool status = RunConfiguration(opts);
     if (!status)
     {
-        cout << "ssd_multibox FAILED" << endl;
+        cout << opts.net_type << " FAILED" << endl;
         return EXIT_FAILURE;
     }
 
-    cout << "ssd_multibox PASSED" << endl;
+    cout << opts.net_type << " PASSED" << endl;
     return EXIT_SUCCESS;
 }
 
@@ -173,9 +203,9 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     /* This represents the alpha value of the second plane. 0 makes it clear
      * and 255 makes it opaque
      */
-    int alpha_value = 255;
-    CamDisp cam(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2", true);
-    cam.init_capture_pipeline();
+    int alpha_value = 150;
+    CamDisp cam(1024, 576, c.inWidth, c.inHeight, alpha_value, "/dev/video2", true);
+    cam.init_capture_pipeline(opts.net_type);
 
     // setup preprocessed input
     ifstream ifs;
@@ -197,12 +227,23 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         // and configuration specified
         // EVE will run layersGroupId 1 in the network, while
         // DSP will run layersGroupId 2 in the network
-        Executor* e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c, 1);
-        MSG("Executor of EVE created");
-        Executor* e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c, 2);
+
+        Executor *e_dsp, *e_eve;
+        MSG("Beginning to create executors for net_type %s", opts.net_type.c_str());
+        if (opts.net_type == "ssd") {
+          e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c, 2);
+          e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c, 1);
+        }
+        else {
+          MSG("entering correct if");
+          e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c);
+          MSG("eve executor created");
+          e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c);
+          MSG("dsp executor created");
+
+        }
         vector<ExecutionObjectPipeline *> eops;
-        MSG("Executor of DSP created");
-        if (e_eve != nullptr && e_dsp != nullptr)
+        if (e_eve != nullptr && e_dsp != nullptr && (opts.net_type != "seg"))
         {
             // Construct ExecutionObjectPipeline that utilizes multiple
             // ExecutionObjects to process a single frame, each ExecutionObject
@@ -240,7 +281,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
                     eops.push_back(new ExecutionObjectPipeline(
                       {(*e_eve)[i%opts.num_eves], (*e_dsp)[i%opts.num_dsps]}));
         }
-        else
+        else if (opts.net_type == "ssd")
         {
             // Construct ExecutionObjectPipeline that utilizes a
             // ExecutionObject to process a single frame, each ExecutionObject
@@ -275,34 +316,82 @@ bool RunConfiguration(const cmdline_opts_t& opts)
                     eops.push_back(new ExecutionObjectPipeline({(*e_dsp)[i]}));
             }
         }
+        else if (opts.net_type == "seg") {
+          // Get ExecutionObjects from Executors
+          vector<ExecutionObject*> eos;
+          for (uint32_t i = 0; i < opts.num_eves; i++) eos.push_back((*e_eve)[i]);
+          for (uint32_t i = 0; i < opts.num_dsps; i++) eos.push_back((*e_dsp)[i]);
+          MSG("eos created of size %d", eos.size());
+          uint32_t num_eos = eos.size();
+
+          // Use duplicate EOPs to do double buffering on frame input/output
+          //    because each EOP has its own set of input/output buffers,
+          //    so that host ReadFrame() can be overlapped with device processing
+          // Use one EO as an example, with different buffer_factor,
+          //    we have different execution behavior:
+          // If buffer_factor is set to 1 -> single buffering
+          //    we create one EOP: eop0 (eo0)
+          //    pipeline execution of multiple frames over time is as follows:
+          //    --------------------- time ------------------->
+          //    eop0: [RF][eo0.....][WF]
+          //    eop0:                   [RF][eo0.....][WF]
+          //    eop0:                                     [RF][eo0.....][WF]
+          // If buffer_factor is set to 2 -> double buffering
+          //    we create two EOPs: eop0 (eo0), eop1(eo0)
+          //    pipeline execution of multiple frames over time is as follows:
+          //    --------------------- time ------------------->
+          //    eop0: [RF][eo0.....][WF]
+          //    eop1:     [RF]      [eo0.....][WF]
+          //    eop0:                   [RF]  [eo0.....][WF]
+          //    eop1:                             [RF]  [eo0.....][WF]
+          uint32_t buffer_factor = 2;  // set to 1 for single buffering
+          for (uint32_t j = 0; j < buffer_factor; j++)
+              for (uint32_t i = 0; i < num_eos; i++)
+                  eops.push_back(new ExecutionObjectPipeline({eos[i]}));
+          MSG("eops of size %d created", eops.size());
+        }
+        else {
+          ERROR("NETWORK NOT INITIALIZED");
+          sleep(2);
+          return false;
+        }
         uint32_t num_eops = eops.size();
 
         // Allocate input/output memory for each EOP
         AllocateMemory(eops);
-
+        MSG("Memory allocated");
         chrono::time_point<chrono::steady_clock> tloop0, tloop1;
         tloop0 = chrono::steady_clock::now();
+        MSG("Clock started");
 
         // Process frames with available eops in a pipelined manner
         // additional num_eops iterations to flush pipeline (epilogue)
         for (uint32_t frame_idx = 0;
-             frame_idx < opts.num_frames + num_eops; frame_idx++)
+             frame_idx < (int) opts.num_frames + num_eops; frame_idx++)
         {
+            MSG("eop[%d] about to be selected", frame_idx % num_eops);
             ExecutionObjectPipeline* eop = eops[frame_idx % num_eops];
-
+            MSG("eop[%d] selected", frame_idx % num_eops);
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait()) {
-                WriteFrameOutputSSD(*eop, c, opts, cam);
+                if (opts.net_type == "ssd")
+                  WriteFrameOutputSSD(*eop, c, opts, cam);
+                // else
+                //   WriteFrameOutputSEG(*eop, c, opts, cam);
                 cam.disp_frame();
             }
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
-            if (ReadFrame(*eop, frame_idx, c, opts, cam, ifs)) {
-              auto rdStop = high_resolution_clock::now();
-              auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
-              cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
-              eop->ProcessFrameStartAsync();
+            if (opts.net_type == "ssd") {
+              ReadFrame(*eop, frame_idx, c, opts, cam, ifs);
             }
+            else if (opts.net_type == "seg") {
+              ReadFrameSEG(*eop, frame_idx, c, opts, cam, ifs);
+            }
+            auto rdStop = high_resolution_clock::now();
+            auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
+            cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
+            eop->ProcessFrameStartAsync();
         }
         cam.turn_off();
         tloop1 = chrono::steady_clock::now();
@@ -325,7 +414,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     return status;
 }
 
-// Create an Executor with the specified type and number of EOs
+// SSD: Create an Executor with the specified type and number of EOs
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
                          int layers_group_id)
 {
@@ -340,10 +429,23 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
     return e;
 }
 
+// SEG: Create an Executor with the specified type and number of EOs
+Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c)
+{
+    if (num == 0) return nullptr;
+
+    DeviceIds ids;
+    for (uint32_t i = 0; i < num; i++)
+        ids.insert(static_cast<DeviceId>(i));
+
+    return new Executor(dt, ids, c);
+}
+
 bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap, ifstream &ifs)
 {
+    MSG("Beginning read frame");
     if ((uint32_t)frame_idx >= opts.num_frames)
         return false;
 
@@ -360,6 +462,34 @@ bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     memcpy(frame_buffer+channel_size, channels[1].ptr(), channel_size);
     memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
 
+    assert (frame_buffer != nullptr);
+    return true;
+}
+
+bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+               const Configuration& c, const cmdline_opts_t& opts,
+               CamDisp &cap, ifstream &ifs)
+{
+    MSG("Beginning read frame");
+    if ((uint32_t)frame_idx >= opts.num_frames)
+        return false;
+
+    eop.SetFrameIndex(frame_idx);
+    char *in_ptr = (char *) cap.grab_image();
+    int channel_size = c.inWidth*c.inHeight;
+
+    /* More efficient method after testing */
+    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC3, in_ptr);
+    Mat channels[3];
+    split(pic, channels);
+    char*  frame_buffer = eop.GetInputBufferPtr();
+    memcpy(frame_buffer, channels[0].ptr(), channel_size);
+    memcpy(frame_buffer+channel_size, channels[1].ptr(), channel_size);
+    memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
+
+    ArgInfo in = {ArgInfo(frame_buffer, channel_size*3)};
+    ArgInfo out = {ArgInfo(cap.drm_device.plane_data_buffer[1][cap.frame_num]->buf_mem_addr[0], channel_size)};
+    eop.SetInputOutputBuffer(in, out);
     assert (frame_buffer != nullptr);
     return true;
 }
@@ -479,6 +609,60 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
         printf("Saving frame %d with SSD multiboxes to: %s\n",
                frame_index, outfile_name);
     }
+
+    return true;
+}
+
+// Create Overlay mask for pixel-level segmentation
+void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
+                int channel_size)
+{
+    for (int i = 0; i < channel_size; i++)
+    {
+        const ObjectClass& object_class = object_classes->At(classes[i]);
+        ma[i] = 255;
+        mb[i] = object_class.color.blue;
+        mg[i] = object_class.color.green;
+        mr[i] = object_class.color.red;
+    }
+}
+
+// Create frame overlayed with pixel-level segmentation
+bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
+                      const Configuration& c,
+                      const cmdline_opts_t& opts, const CamDisp& cam)
+{
+    unsigned char *out = (unsigned char *) eop.GetOutputBufferPtr();
+    int width          = c.inWidth;
+    int height         = c.inHeight;
+    int channel_size   = width * height;
+
+    for (int i = 0; i < channel_size; i++) {
+      out[i] <<= 6;
+    }
+
+
+    // if (opts.is_camera_input || opts.is_video_input)
+    // {
+    //     // cv::imshow("Segmentation", r_blend);
+    //     waitKey(1);
+    // }
+    // else
+    // {
+    //     int frame_index = eop.GetFrameIndex();
+    //     char outfile_name[64];
+    //     if (opts.input_file.empty())
+    //     {
+    //         snprintf(outfile_name, 64, "frame_%d.png", frame_index);
+    //         cv::imwrite(outfile_name, frame);
+    //         printf("Saving frame %d to: %s\n", frame_index, outfile_name);
+    //     }
+    //
+    //     snprintf(outfile_name, 64, "overlay_%d.png", frame_index);
+    //     cv::imwrite(outfile_name, r_blend);
+    //     printf("Saving frame %d overlayed with segmentation to: %s\n",
+    //            frame_index, outfile_name);
+    // }
 
     return true;
 }
