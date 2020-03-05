@@ -64,7 +64,7 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
 }
 
 
-bool CamDisp::init_capture_pipeline() {
+bool CamDisp::init_capture_pipeline(string net_type) {
 
   /* set num_planes to 1 for no output layer and num_planes to 2 for the output
    * layer to be shown
@@ -153,7 +153,11 @@ bool CamDisp::init_capture_pipeline() {
   vpe.m_field = V4L2_FIELD_ANY;
   drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers, 2, 0);
 
-  drm_device.get_vid_buffers(3, FOURCC_STR("RA24"), dst_w, dst_h, 4, 1);
+  if (net_type == "seg")
+    drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1);
+  else if (net_type == "ssd")
+    drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 2, 1);
+
   drm_device.drm_init_dss(&vip, alpha);
 
 
@@ -236,21 +240,15 @@ void CamDisp::turn_off() {
  */
 
 // int main(int argc, char *argv[]) {
-//   int cap_w = 800;
-//   int cap_h = 600;
-//   int model_w = 768;
-//   int model_h = 320;
+//   int cap_w = 1280;
+//   int cap_h = 720;
+//   int model_w = 1024;
+//   int model_h = 512;
 //
 //   // capture w, capture h, output w, output h, device name, is usb?
-//   CamDisp cam(cap_w, cap_h, model_w, model_h, "/dev/video2", true);
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true);
 //
-//   // This is the display object
-//   DRMDeviceInfo drm_device;
-//   drm_device.drm_init_device();
-//
-//   cam.init_capture_pipeline(drm_device.fd);
-//
-//   drm_device.export_buffer(cam.bo_vpe_in, cam.vpe.m_num_buffers);
+//   cam.init_capture_pipeline();
 //   auto start = std::chrono::high_resolution_clock::now();
 //
 //   int num_frames = 300;
@@ -258,12 +256,11 @@ void CamDisp::turn_off() {
 //     num_frames = stoi(argv[1]);
 //   }
 //
-//   drm_device.drm_init_dss(&cam.vip);
 //   for (int i=0; i<num_frames; i++) {
 //     if (argc <= 2)
-//       cam.grab_image(&drm_device);
+//       cam.grab_image();
 //     else
-//       save_data(cam.grab_image(&drm_device), model_w, model_h, 3, 3);
+//       save_data(cam.grab_image(), model_w, model_h, 3, 3);
 //     //drm_device.disp_frame(NULL);
 //   }
 //   auto stop = std::chrono::high_resolution_clock::now();
