@@ -37,6 +37,7 @@ public:
   VIPObj vip;
   VPEObj vpe;
   DmaBuffer **bo_vpe_in;
+  DmaBuffer **bo_vpe_out;
   DRMDeviceInfo drm_device;
   int frame_num;
   int vip_frame_num = -1;

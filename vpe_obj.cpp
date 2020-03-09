@@ -161,7 +161,7 @@ bool VPEObj::vpe_input_init()
 
 }
 
-bool VPEObj::vpe_output_init()
+bool VPEObj::vpe_output_init(int *export_fds)
 {
 	int ret;
 	struct v4l2_format fmt;
@@ -209,26 +209,35 @@ bool VPEObj::vpe_output_init()
 
 	m_num_buffers = rqbufs.count;
 
-  if (dst.memory == V4L2_MEMORY_MMAP) {
-    dst.base_addr = (unsigned int **) calloc(m_num_buffers, sizeof(unsigned int));
-    for (int i = 0; i < m_num_buffers; i++) {
-      memset(&v4l2buf, 0, sizeof(v4l2buf));
-      v4l2buf.type = dst.type;
-      v4l2buf.memory = dst.memory;
-      v4l2buf.m.planes	= buf_planes;
-      v4l2buf.length	= dst.coplanar ? 2 : 1;
-      v4l2buf.index = i;
 
-      ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+  for (int i = 0; i < m_num_buffers; i++) {
+    memset(&v4l2buf, 0, sizeof(v4l2buf));
+    v4l2buf.type = dst.type;
+    v4l2buf.memory = dst.memory;
+    v4l2buf.m.planes	= buf_planes;
+    v4l2buf.length	= dst.coplanar ? 2 : 1;
+    v4l2buf.index = i;
+
+    ret = ioctl(m_fd, VIDIOC_QUERYBUF, &v4l2buf);
+    if (ret) {
+        ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
+        return ret;
+    }
+
+    if (dst.memory == V4L2_MEMORY_MMAP) {
+      dst.base_addr = (unsigned int **) calloc(m_num_buffers, sizeof(unsigned int));
       dst.base_addr[i] = (unsigned int *) mmap(NULL, v4l2buf.m.planes[0].length, PROT_READ | PROT_WRITE,
              MAP_SHARED, m_fd, v4l2buf.m.planes[0].m.mem_offset);
-      // print_v4l2_plane_buffer(&v4l2buf);
-
-      if (ret) {
-          ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-          return ret;
-      }
     }
+    else {
+      if (!export_fds) {
+        ERROR("NULL export file descriptors with DMABUF memory type");
+        return false;
+      }
+      v4l2buf.m.fd = export_fds[i];
+    }
+    print_v4l2_plane_buffer(&v4l2buf);
+
   }
 
 	MSG("%s: vpe o/p: allocated buffers = %d\n", m_dev_name.c_str(), rqbufs.count);
@@ -412,8 +421,8 @@ VPEObj::VPEObj(){
 
 
 VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
-  int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc,
-  int num_buffers)
+  int src_memory, int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc,
+  int dst_memory, int num_buffers)
 {
   default_parameters();
   m_num_buffers = num_buffers;
@@ -422,11 +431,13 @@ VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
   src.height = src_h;
   src.size = src_w*src_h*src_bytes_per_pixel;
   src.fourcc = src_fourcc;
+  src.memory = src_memory;
 
   dst.width = dst_w;
   dst.height = dst_h;
   dst.size = dst_w*dst_h*dst_bytes_per_pixel;
   dst.fourcc = dst_fourcc;
+  dst.memory = dst_memory;
 
   open_fd();
 }

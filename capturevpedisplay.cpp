@@ -53,12 +53,15 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
   dst_h = _dst_h;
   alpha = _alpha;
   if (usb) {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
+    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
   }
   else {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
+    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
   }
-  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
+  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, V4L2_MEMORY_DMABUF, dst_w,
+    dst_h, 3, V4L2_PIX_FMT_BGR24, V4L2_MEMORY_DMABUF, 3);
 
   frame_num = 0;
 }
@@ -74,39 +77,57 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   vip.device_init();
   vpe.open_fd();
 
-  int export_fds[vip.src.num_buffers];
+  int in_export_fds[vip.src.num_buffers];
+  int out_export_fds[vpe.m_num_buffers];
+
   // Create an "omap_device" from the fd
   struct omap_device *dev = omap_device_new(drm_device.fd);
   bo_vpe_in = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
+  bo_vpe_out = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
 
-  if (!bo_vpe_in) {
+  if (!bo_vpe_in || !bo_vpe_out) {
     ERROR("memory allocation failure, exiting \n");
     exit(EXIT_FAILURE);
   }
 
   for (int i = 0; i < vip.src.num_buffers; i++) {
       bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+      bo_vpe_out[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+
       bo_vpe_in[i]->width = src_w;
+      bo_vpe_out[i]->width = dst_w;
+
       bo_vpe_in[i]->height = src_h;
+      bo_vpe_out[i]->height = dst_h;
+
       bo_vpe_in[i]->fourcc = vip.src.fourcc;
+      bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
 
       // allocate space for buffer object (bo)
       bo_vpe_in[i]->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
+      bo_vpe_out[i]->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
+
       // define the object
   		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+      bo_vpe_out[i]->bo[0] = omap_bo_new(dev, dst_w*dst_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+
       // give the object a file descriptor for dmabuf v4l2 calls
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
+      bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
+
       if (vip.src.memory == V4L2_MEMORY_MMAP) {
         bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
         bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+        bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+        bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
       }
 
       MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
-      export_fds[i] = bo_vpe_in[i]->fd[0];
+      in_export_fds[i] = bo_vpe_in[i]->fd[0];
+      out_export_fds[i] = bo_vpe_out[i]->fd[0];
   }
 
-  if(!vip.request_export_buf(export_fds)) {
-  // if (!vip.request_buf()) {
+  if(!vip.request_export_buf(in_export_fds)) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
@@ -118,8 +139,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   }
   MSG("Input layer initialization done\n");
 
-
-  if(!vpe.vpe_output_init()) {
+  if(!vpe.vpe_output_init(out_export_fds)) {
     ERROR("Output layer initialization failed.");
     return false;
   }
@@ -151,7 +171,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   if (!vpe.stream_on(1)) return false;
 
   vpe.m_field = V4L2_FIELD_ANY;
-  drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers, 2, 0);
+  drm_device.export_buffer(bo_vpe_out, vpe.m_num_buffers, 3, 0);
 
   if (net_type == "seg")
     drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1);

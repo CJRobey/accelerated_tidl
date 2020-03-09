@@ -41,14 +41,15 @@ public:
 
   VPEObj();
   VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
-    int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers);
+    int src_memory, int dst_w, int dst_h, int dst_bytes_per_pixel,
+    int dst_fourcc, int dst_memory, int num_buffers);
   ~VPEObj();
   bool open_fd(void);
   void vpe_close();
   int set_src_format();
   int set_dst_format();
   bool vpe_input_init();
-  bool vpe_output_init();
+  bool vpe_output_init(int *export_fds);
   bool input_qbuf(int fd, int index);
   bool output_qbuf(int index);
   bool stream_on(int layer);
