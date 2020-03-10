@@ -97,8 +97,6 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
   for (int i=0;i<4;i++)
     MSG("%d: bo_handles = %d - buf->pitches = %d - offsets = %d - &buf->fb_id = %d", i, bo_handles[i], buf->pitches[i], offsets[i], buf->fb_id);
 
-
-	MSG("fourcc:%d, fb_id %d \n",fourcc, buf->fb_id);
 	if (ret) {
 		ERROR("drmModeAddFB2 failed: %s (%d)", strerror(errno), ret);
 		return NULL;
@@ -113,38 +111,44 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
  * omap_drm buffers doesn't support cache read. CPU can take 10x to 60x
  * more cycles to operate on non cached buffer.
  */
-bool DRMDeviceInfo::export_buffer(DmaBuffer **db, int num_bufs, int bytes_pp, int channel_number)
+bool DRMDeviceInfo::export_buffer(DmaBuffer **db, int num_bufs, int bytes_pp,
+                                  int channel_number)
 {
-	unsigned int bo_handles[4] = {0}, offsets[4] = {0};
-	int ret;
+  if (db) {
+    for (int i=0; i<num_bufs; i++) {
+      unsigned int bo_handles[4] = {0}, offsets[4] = {0};
+      int ret;
+    	db[i]->pitches[0] = db[i]->width*bytes_pp;
 
-  for (int i=0; i<num_bufs; i++) {
-  	db[i]->pitches[0] = db[i]->width*bytes_pp;
-
-  	if (db[i]->bo[0]){
-  		bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
-  	}
-    else {
-      ERROR("Passed unallocated buffers to export_buffer function");
-      return false;
+    	if (db[i]->bo[0]){
+    		bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
+    	}
+      else {
+        ERROR("Passed unallocated buffers to export_buffer function");
+        return false;
+      }
+      MSG("BEFORE fd = %d", fd);
+      for (int i=0;i<num_bufs;i++) {
+        MSG("%d: buf->width = %d - buf->height = %d - buf->fourcc = %d - buf->pitches = %d -" \
+            " buf->fb_id = %d", i, db[i]->width, db[i]->height, db[i]->fourcc, db[i]->pitches[0], db[i]->fb_id);
+      }
+    	ret = drmModeAddFB2(fd, db[i]->width, db[i]->height, db[i]->fourcc,
+    		bo_handles, db[i]->pitches, offsets, &db[i]->fb_id, 0);
+      MSG("AFTER fd = %d", fd);
+      for (int i=0;i<num_bufs;i++) {
+        MSG("%d: buf->width = %d - buf->height = %d - buf->fourcc = %d - buf->pitches = %d -" \
+            " buf->fb_id = %d", i, db[i]->width, db[i]->height, db[i]->fourcc, db[i]->pitches[0], db[i]->fb_id);
+      }
+    	if (ret) {
+    		ERROR("drmModeAddFB2 failed: %s (%d)", strerror(errno), ret);
+    		return false;
+    	}
+      MSG("%d: bo_handles = %d - offsets = %d ", i, bo_handles[0], offsets[0]);
+      MSG("%d", ret);
     }
 
-  	ret = drmModeAddFB2(fd, db[i]->width, db[i]->height, db[i]->fourcc,
-  		bo_handles, db[i]->pitches, offsets, &db[i]->fb_id, 0);
 
-    MSG("fd = %d - buf->width = %d - buf->height = %d - fourcc = %d", fd,
-        db[i]->width, db[i]->height, db[i]->fourcc);
-    for (int i=0;i<num_bufs;i++)
-      MSG("%d: bo_handles = %d - buf->pitches = %d - offsets = %d -" \
-          " &buf->fb_id = %d", i, bo_handles[i], db[i]->pitches[0], offsets[i],
-          db[i]->fb_id);
-
-  	if (ret) {
-  		ERROR("drmModeAddFB2 failed: %s (%d)", strerror(errno), ret);
-  		return NULL;
-  	}
   }
-
   plane_data_buffer[channel_number] = db;
 	return true;
 }
@@ -257,7 +261,7 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 
 
 void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
-                                           int alpha, VIPObj *vip)
+                                           int alpha, ImageParams *src)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -308,8 +312,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
     if (!i) {
-  		add_property(fd, req, props, plane_id[i], "SRC_W", vip->src.width << 16);
-  		add_property(fd, req, props, plane_id[i], "SRC_H", vip->src.height << 16);
+  		add_property(fd, req, props, plane_id[i], "SRC_W", src->width << 16);
+  		add_property(fd, req, props, plane_id[i], "SRC_H", src->height << 16);
     }
     else {
       add_property(fd, req, props, plane_id[i], "SRC_W", 768 << 16);
@@ -488,7 +492,7 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(VIPObj *vip, int alpha)
+int DRMDeviceInfo::drm_init_dss(ImageParams *src, int alpha)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -554,7 +558,7 @@ int DRMDeviceInfo::drm_init_dss(VIPObj *vip, int alpha)
 
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
-	drm_add_plane_property(req, alpha, vip);
+	drm_add_plane_property(req, alpha, src);
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);

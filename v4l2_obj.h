@@ -19,11 +19,11 @@ public:
   int size;
   int type;
   int size_uv;
-  bool coplanar;
+  int bytes_pp = 0;
+  bool coplanar = false;
   int memory;
   v4l2_format fmt;
   v4l2_colorspace colorspace;
-  //v4l2_buffer *v4l2bufs;
   v4l2_buffer **v4l2bufs;
 
   int num_buffers;
@@ -51,7 +51,7 @@ public:
   bool vpe_input_init();
   bool vpe_output_init(int *export_fds);
   bool input_qbuf(int fd, int index);
-  bool output_qbuf(int index);
+  bool output_qbuf(int index, int fd);
   bool stream_on(int layer);
   bool stream_off(int layer);
   int input_dqbuf();

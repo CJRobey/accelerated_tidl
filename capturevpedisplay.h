@@ -40,7 +40,7 @@ public:
   DmaBuffer **bo_vpe_out;
   DRMDeviceInfo drm_device;
   int frame_num;
-  int vip_frame_num = -1;
+  int disp_frame_num = -1;
   int src_w;
   int src_h;
   int dst_w;
@@ -50,7 +50,8 @@ public:
   bool stop_after_one = false;
 
   CamDisp();
-  CamDisp(int src_w, int src_h, int dst_w, int dst_h, int alpha, std::string dev_name, bool usb);
+  CamDisp(int src_w, int src_h, int dst_w, int dst_h, int alpha,
+    std::string dev_name, bool usb, std::string net_type);
   bool init_capture_pipeline(std::string net_type);
   void *grab_image();
   void disp_frame();
