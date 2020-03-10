@@ -46,12 +46,16 @@ void VIPObj::device_init(){
     /* Open the capture device */
     m_fd = open(m_dev_name.c_str(), O_RDWR);
 
-    if (m_fd <= 0) {
+    if (m_fd < 0) {
         ERROR("Cannot open %s device\n\n", m_dev_name.c_str());
         return;
     }
 
     MSG("\n%s: Opened Channel at fd %d\n", m_dev_name.c_str(), m_fd);
+    if (m_fd == 0) {
+      MSG("WARNING: Capture device opened fd 0. There may be an issue with stdin.");
+      sleep(1.5);
+    }
 
     /* Check if the device is capable of streaming */
     if (ioctl(m_fd, VIDIOC_QUERYCAP, &capability) < 0) {
@@ -116,8 +120,10 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.num_buffers = num_buf;
     src.type=(v4l2_buf_type) type;
     src.fourcc = pix_fmt;
-    if (src.fourcc == V4L2_PIX_FMT_YUYV)
+    if (src.fourcc == V4L2_PIX_FMT_YUYV) {
+      src.bytes_pp = 2;
       src.size = w*h*2;
+    }
     src.memory = memory;
     if (src.memory == V4L2_MEMORY_MMAP)
       src.fmt.fmt.pix.field = V4L2_FIELD_NONE;
@@ -294,7 +300,6 @@ bool VIPObj::queue_buf(int fd, int index) {
   	int			ret = -1;
 
     if (src.memory == V4L2_MEMORY_MMAP) {
-      MSG("Queueing MMAP buffer");
       for (int i=0; i<src.num_buffers; i++)
         if (src.v4l2bufs[i]->index == (unsigned int) index)
           buf = src.v4l2bufs[i];

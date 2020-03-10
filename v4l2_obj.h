@@ -25,6 +25,7 @@ public:
   v4l2_format fmt;
   v4l2_colorspace colorspace;
   v4l2_buffer **v4l2bufs;
+  v4l2_plane **v4l2planes;
 
   int num_buffers;
 };

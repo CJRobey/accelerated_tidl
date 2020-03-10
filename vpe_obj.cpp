@@ -61,12 +61,17 @@ bool VPEObj::open_fd() {
   /* Open the capture device */
   m_fd = open(m_dev_name.c_str(), O_RDWR);
 
-  if (m_fd <= 0) {
+  if (m_fd < 0) {
       ERROR("Cannot open %s device\n\n", m_dev_name.c_str());
       return false;
   }
 
   MSG("\n%s: Opened Channel with fd = %d\n", m_dev_name.c_str(), m_fd);
+
+  if (m_fd == 0) {
+    MSG("WARNING: Capture device opened fd 0. There may be an issue with stdin.");
+    sleep(1.5);
+  }
   return true;
 }
 
@@ -166,8 +171,7 @@ bool VPEObj::vpe_output_init(int *export_fds)
 	int ret;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers rqbufs;
-  struct v4l2_plane		buf_planes[m_num_buffers][2];
-
+  // struct v4l2_plane		buf_planes[m_num_buffers][2];
 	bzero(&fmt, sizeof fmt);
 	fmt.type = dst.type;
 	fmt.fmt.pix_mp.width = dst.width;
@@ -209,16 +213,19 @@ bool VPEObj::vpe_output_init(int *export_fds)
 	m_num_buffers = rqbufs.count;
 
   dst.v4l2bufs = (struct v4l2_buffer **) malloc(rqbufs.count * sizeof(unsigned int));
+  dst.v4l2planes = (struct v4l2_plane **) malloc(rqbufs.count * sizeof(unsigned int));
   for (int i = 0; i < m_num_buffers; i++) {
     dst.v4l2bufs[i] = (struct v4l2_buffer *) malloc(sizeof(struct v4l2_buffer));
-    memset(&buf_planes[i], 0, sizeof(buf_planes[i]));
+    dst.v4l2planes[i] = (struct v4l2_plane *) calloc(2, sizeof(struct v4l2_plane));
+
+    memset(dst.v4l2planes[i], 0, sizeof(*dst.v4l2planes[i]));
     memset(dst.v4l2bufs[i], 0, sizeof(*dst.v4l2bufs[i]));
 
     dst.v4l2bufs[i]->type = dst.type;
     dst.v4l2bufs[i]->memory = dst.memory;
     dst.v4l2bufs[i]->length	= dst.coplanar ? 2 : 1;
     dst.v4l2bufs[i]->index = i;
-    dst.v4l2bufs[i]->m.planes = &buf_planes[i][0];
+    dst.v4l2bufs[i]->m.planes = dst.v4l2planes[i];
 
     ret = ioctl(m_fd, VIDIOC_QUERYBUF, dst.v4l2bufs[i]);
     if (ret) {
@@ -233,12 +240,12 @@ bool VPEObj::vpe_output_init(int *export_fds)
         m_fd, dst.v4l2bufs[i]->m.planes[0].m.mem_offset);
     }
     if (dst.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-    	buf_planes[i][0].length = buf_planes[i][0].bytesused = dst.size;
+    	dst.v4l2planes[i][0].length = dst.v4l2planes[i][0].bytesused = dst.size;
     	if(dst.coplanar)
-    		buf_planes[i][1].length = buf_planes[i][1].bytesused = dst.size_uv;
+    		dst.v4l2planes[i][1].length = dst.v4l2planes[i][1].bytesused = dst.size_uv;
 
-    	buf_planes[i][0].data_offset = buf_planes[i][1].data_offset = 0;
-      dst.v4l2bufs[i]->m.planes = &buf_planes[i][0];
+    	dst.v4l2planes[i][0].data_offset = dst.v4l2planes[i][1].data_offset = 0;
+      dst.v4l2bufs[i]->m.planes = &dst.v4l2planes[i][0];
       if (dst.memory == V4L2_MEMORY_DMABUF)
   	   dst.v4l2bufs[i]->m.planes[0].m.fd = export_fds[i];
 

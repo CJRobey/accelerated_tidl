@@ -261,7 +261,8 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 
 
 void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
-                                           int alpha, ImageParams *src)
+                                           int alpha, ImageParams *plane0,
+                                           ImageParams *plane1)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -311,13 +312,16 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
+    // MSG("Plane0: %dx%d", plane0->width, plane0->height);
+    // MSG("Plane1: %dx%d", plane1->width, plane1->height);
+    // sleep(2);
     if (!i) {
-  		add_property(fd, req, props, plane_id[i], "SRC_W", src->width << 16);
-  		add_property(fd, req, props, plane_id[i], "SRC_H", src->height << 16);
+  		add_property(fd, req, props, plane_id[i], "SRC_W", plane0->width << 16);
+  		add_property(fd, req, props, plane_id[i], "SRC_H", plane0->height << 16);
     }
     else {
-      add_property(fd, req, props, plane_id[i], "SRC_W", 768 << 16);
-  		add_property(fd, req, props, plane_id[i], "SRC_H", 320 << 16);
+      add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width << 16);
+  		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height << 16);
     }
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
     // Set global_alpha value if needed
@@ -469,6 +473,9 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 			ERROR("could not open drm device: %s (%d)", strerror(errno), errno);
 			return -1;
 		}
+    else {
+      MSG("Opened omapdrm with fd %d", fd);
+    }
 	}
 
 	drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
@@ -492,7 +499,7 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(ImageParams *src, int alpha)
+int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int alpha)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -558,7 +565,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *src, int alpha)
 
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
-	drm_add_plane_property(req, alpha, src);
+	drm_add_plane_property(req, alpha, plane0, plane1);
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
