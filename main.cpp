@@ -204,8 +204,14 @@ bool RunConfiguration(const cmdline_opts_t& opts)
      * and 255 makes it opaque
      */
     int alpha_value = 150;
-    CamDisp cam(1024, 576, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
-      true, opts.net_type);
+    if (opts.net_type == "seg") {
+      CamDisp cam(1280, 720, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
+        true, opts.net_type);
+    }
+    else {
+      CamDisp cam(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
+        true, opts.net_type);
+    }
     cam.init_capture_pipeline(opts.net_type);
 
     // setup preprocessed input
