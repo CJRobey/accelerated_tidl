@@ -84,7 +84,7 @@ bool RunConfiguration(const cmdline_opts_t& opts);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
                          int layers_group_id);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c);
-bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap, ifstream &ifs);
 bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
@@ -203,13 +203,14 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     /* This represents the alpha value of the second plane. 0 makes it clear
      * and 255 makes it opaque
      */
-    int alpha_value = 150;
+    CamDisp cam;
+    int alpha_value = 255;
     if (opts.net_type == "seg") {
-      CamDisp cam(1280, 720, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
+      cam = CamDisp(1280, 720, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
         true, opts.net_type);
     }
     else {
-      CamDisp cam(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
+      cam = CamDisp(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
         true, opts.net_type);
     }
     cam.init_capture_pipeline(opts.net_type);
@@ -276,7 +277,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             //    eop0:                   [eve0...][dsp0]
             //    eop1:                            [eve0...][dsp0]
             // Additional benefit of setting pipeline_depth to 2 is that
-            //    it can also overlap host ReadFrame() with device processing:
+            //    it can also overlap host ReadFrameSSD() with device processing:
             //    --------------------- time ------------------->
             //    eop0: [RF][eve0...][dsp0]
             //    eop1:     [RF]     [eve0...][dsp0]
@@ -296,7 +297,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             //
             // Use duplicate EOPs to do double buffering on frame input/output
             //    because each EOP has its own set of input/output buffers,
-            //    so that host ReadFrame() can overlap device processing
+            //    so that host ReadFrameSSD() can overlap device processing
             // Use one EO as an example, with different buffer_factor,
             //    we have different execution behavior:
             // If buffer_factor is set to 1 -> single buffering
@@ -333,7 +334,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
           // Use duplicate EOPs to do double buffering on frame input/output
           //    because each EOP has its own set of input/output buffers,
-          //    so that host ReadFrame() can be overlapped with device processing
+          //    so that host ReadFrameSSD() can be overlapped with device processing
           // Use one EO as an example, with different buffer_factor,
           //    we have different execution behavior:
           // If buffer_factor is set to 1 -> single buffering
@@ -376,21 +377,19 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         for (uint32_t frame_idx = 0;
              frame_idx < (int) opts.num_frames + num_eops; frame_idx++)
         {
-            MSG("eop[%d] about to be selected", frame_idx % num_eops);
             ExecutionObjectPipeline* eop = eops[frame_idx % num_eops];
-            MSG("eop[%d] selected", frame_idx % num_eops);
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait()) {
                 if (opts.net_type == "ssd")
                   WriteFrameOutputSSD(*eop, c, opts, cam);
-                // else
-                //   WriteFrameOutputSEG(*eop, c, opts, cam);
+                else
+                  WriteFrameOutputSEG(*eop, c, opts, cam);
                 cam.disp_frame();
             }
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
             if (opts.net_type == "ssd") {
-              ReadFrame(*eop, frame_idx, c, opts, cam, ifs);
+              ReadFrameSSD(*eop, frame_idx, c, opts, cam, ifs);
             }
             else if (opts.net_type == "seg") {
               ReadFrameSEG(*eop, frame_idx, c, opts, cam, ifs);
@@ -448,7 +447,7 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c)
     return new Executor(dt, ids, c);
 }
 
-bool ReadFrame(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap, ifstream &ifs)
 {
@@ -574,16 +573,16 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
         if (xmax > width)   xmax = width;
         if (ymax > height)  ymax = height;
         cv::rectangle(frame, Point(xmin, ymin), Point(xmax, ymax),
-                      Scalar(alpha, object_class.color.blue,
+                      Scalar(object_class.color.blue,
                              object_class.color.green,
-                             object_class.color.red), 2);
+                             object_class.color.red, alpha), 2);
 
        // place the name of the class at the botton of the box
        cv::rectangle(frame, Point(xmin,ymax) + Point(0, baseline),
              Point(xmin,ymax) + Point(text_size.width,
-             -text_size.height) , Scalar(alpha, 0,0,0), -1);
+             -text_size.height) , Scalar(0,0,0,alpha), -1);
        cv::putText(frame, object_class.label, Point(xmin,ymax),
-                   FONT_HERSHEY_DUPLEX, scale, Scalar(alpha, 255,255,255), thickness);
+                   FONT_HERSHEY_DUPLEX, scale, Scalar(255,255,255,alpha), thickness);
 
         MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(), object_class.color.blue,
             object_class.color.green, object_class.color.red);

@@ -181,14 +181,19 @@ bool CamDisp::init_capture_pipeline(string net_type) {
 
 
   vpe.m_field = V4L2_FIELD_ANY;
-  drm_device.export_buffer(bo_vpe_out, vpe.m_num_buffers, vpe.dst.bytes_pp, 0);
-  MSG("Buffer from vpe exported");
+  if (drm_device.export_buffer(bo_vpe_out, vpe.m_num_buffers, vpe.dst.bytes_pp, 0)){
+    DBG("Buffer from vpe exported");
+  }
+  else {
+    ERROR("Failed to export buffer to display");
+    return false;
+  }
 
   // initialize the second plane of data
   if (num_planes > 1) {
     if (net_type == "seg") {
       if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
-        MSG("Segmentation overlay plane successfully allocated");
+        DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
         }
@@ -200,9 +205,9 @@ bool CamDisp::init_capture_pipeline(string net_type) {
         return false;
       }
     }
-    else if (net_type == "ssd")
+    else if (net_type == "ssd") {
       if(drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
-        MSG("Bounding Box overlay plane successfully allocated");
+        DBG("\nBounding Box overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
         }
@@ -213,6 +218,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
               "'modetest -p' will give more information on plane specs");
         return false;
       }
+    }
   }
 
   // begin streaming the capture through the VIP
