@@ -81,6 +81,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   if (num_planes < 2)
     alpha = 0;
 
+  vpe.open_fd();
   drm_device.drm_init_device(num_planes);
   vip.device_init();
   vpe.open_fd();
@@ -246,7 +247,7 @@ void *CamDisp::grab_image() {
 
     /**********DATA IS HERE!!************/
     void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
-
+    MSG("Image data at %p", imagedata);
     return imagedata;
 }
 
@@ -282,8 +283,8 @@ void CamDisp::turn_off() {
 int main(int argc, char *argv[]) {
   int cap_w = 800;
   int cap_h = 600;
-  int model_w = 800;
-  int model_h = 600;
+  int model_w = 1920;
+  int model_h = 1080;
 
   // This is the type of neural net that is being targeted
   std::string net_type = "seg";
