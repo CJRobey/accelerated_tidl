@@ -162,48 +162,6 @@ bool VIPObj::request_buf(){
 }
 
 
-// /* In this example application, user space allocates the buffers and
-//  * provides the buffer fd to be exported to the V4L2 driver
-// */
-// bool VIPObj::request_export_buf(int * export_fds){
-//     struct v4l2_requestbuffers reqbuf;
-//     int ret;
-//     memset(&reqbuf, 0, sizeof(reqbuf));
-//     reqbuf.type = src.type;
-//     reqbuf.memory = src.memory;
-//     reqbuf.count = src.num_buffers;
-//
-//     ret = ioctl(m_fd, VIDIOC_REQBUFS, &reqbuf);
-//     if (ret < 0) {
-//         ERROR("VIDIOC_REQBUFS failed: %s (%d)", strerror(errno), ret);
-//         return false;
-//     }
-//
-//     src.num_buffers = reqbuf.count;
-//     MSG("Allocated %d buffers", reqbuf.count);
-//
-//     src.v4l2bufs = (struct v4l2_buffer *) calloc( reqbuf.count, sizeof(struct v4l2_buffer));
-//
-//     for (int i=0;i<(int)reqbuf.count; i++) {
-//       memset(src.v4l2bufs[i], 0, sizeof(*src.v4l2bufs[i]));
-//       src.v4l2bufs[i]->type = src.type;
-//       src.v4l2bufs[i]->memory = src.memory;
-//       src.v4l2bufs[i]->index = i;
-//
-//       ret = ioctl(m_fd, VIDIOC_QUERYBUF, src.v4l2bufs[i]);
-//       if (ret) {
-//   			ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-//   			return false;
-//       }
-//
-//       src.v4l2bufs[i]->m.fd = export_fds[i];
-//       MSG("Query buf #%d - exporting fd %d", i, export_fds[i]);
-//       print_v4l2buffer(src.v4l2bufs[i]);
-//     }
-//
-//     return true;
-// }
-
 /* In this example application, user space allocates the buffers and
  * provides the buffer fd to be exported to the V4L2 driver
 */

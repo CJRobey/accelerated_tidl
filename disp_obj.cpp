@@ -297,7 +297,7 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 
 		//storing zorder val to restore it before quitting the demo
 		zorder_val[i] = get_drm_prop_val(props, "zorder");
-
+    MSG("num planes is %d", num_planes);
     MSG("check plane data buffer at plane_data_buffer[%d]", i);
     MSG("%p", plane_data_buffer[i][0]);
 
