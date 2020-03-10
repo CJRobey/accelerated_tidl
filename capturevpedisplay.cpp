@@ -242,15 +242,10 @@ void CamDisp::turn_off() {
 //   int model_h = 320;
 //
 //   // capture w, capture h, output w, output h, device name, is usb?
-//   CamDisp cam(cap_w, cap_h, model_w, model_h, "/dev/video2", true);
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true);
 //
-//   // This is the display object
-//   DRMDeviceInfo drm_device;
-//   drm_device.drm_init_device();
+//   cam.init_capture_pipeline();
 //
-//   cam.init_capture_pipeline(drm_device.fd);
-//
-//   drm_device.export_buffer(cam.bo_vpe_in, cam.vpe.m_num_buffers);
 //   auto start = std::chrono::high_resolution_clock::now();
 //
 //   int num_frames = 300;
@@ -258,12 +253,11 @@ void CamDisp::turn_off() {
 //     num_frames = stoi(argv[1]);
 //   }
 //
-//   drm_device.drm_init_dss(&cam.vip);
 //   for (int i=0; i<num_frames; i++) {
 //     if (argc <= 2)
-//       cam.grab_image(&drm_device);
+//       cam.grab_image();
 //     else
-//       save_data(cam.grab_image(&drm_device), model_w, model_h, 3, 3);
+//       save_data(cam.grab_image(), model_w, model_h, 3, 3);
 //     //drm_device.disp_frame(NULL);
 //   }
 //   auto stop = std::chrono::high_resolution_clock::now();
