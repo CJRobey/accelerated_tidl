@@ -204,7 +204,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
      * and 255 makes it opaque
      */
     CamDisp cam;
-    int alpha_value = 255;
+    int alpha_value = 0;
     if (opts.net_type == "seg") {
       cam = CamDisp(1280, 720, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
         true, opts.net_type);
@@ -382,8 +382,8 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             if (eop->ProcessFrameWait()) {
                 if (opts.net_type == "ssd")
                   WriteFrameOutputSSD(*eop, c, opts, cam);
-                else
-                  WriteFrameOutputSEG(*eop, c, opts, cam);
+                // else
+                //   WriteFrameOutputSEG(*eop, c, opts, cam);
                 cam.disp_frame();
             }
             // Read a frame and start processing it with current eo
@@ -460,8 +460,8 @@ bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     int channel_size = c.inWidth*c.inHeight;
 
     /* More efficient method after testing */
-    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC3, in_ptr);
-    Mat channels[3];
+    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC4, in_ptr);
+    Mat channels[4];
     split(pic, channels);
     char*  frame_buffer = eop.GetInputBufferPtr();
     memcpy(frame_buffer, channels[0].ptr(), channel_size);
@@ -485,8 +485,8 @@ bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     int channel_size = c.inWidth*c.inHeight;
 
     /* More efficient method after testing */
-    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC3, in_ptr);
-    Mat channels[3];
+    Mat pic(cvSize(c.inWidth, c.inHeight), CV_8UC4, in_ptr);
+    Mat channels[4];
     split(pic, channels);
     char*  frame_buffer = eop.GetInputBufferPtr();
     memcpy(frame_buffer, channels[0].ptr(), channel_size);
@@ -495,6 +495,7 @@ bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 
     ArgInfo in = {ArgInfo(frame_buffer, channel_size*3)};
     ArgInfo out = {ArgInfo(cap.drm_device.plane_data_buffer[1][cap.frame_num]->buf_mem_addr[0], channel_size)};
+    // ArgInfo out = {ArgInfo(eop.GetOutputBufferPtr(), channel_size)}
     eop.SetInputOutputBuffer(in, out);
     assert (frame_buffer != nullptr);
     return true;
@@ -636,15 +637,15 @@ void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
 // Create frame overlayed with pixel-level segmentation
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
-                      const cmdline_opts_t& opts, const CamDisp& cam)
+                      const cmdline_opts_t& opts, const CamDisp& cap)
 {
     unsigned char *out = (unsigned char *) eop.GetOutputBufferPtr();
     int width          = c.inWidth;
     int height         = c.inHeight;
     int channel_size   = width * height;
-
+    uint16_t *disp_data = (uint16_t *) cap.drm_device.plane_data_buffer[1][cap.frame_num]->buf_mem_addr[0];
     for (int i = 0; i < channel_size; i++) {
-      out[i] <<= 6;
+      disp_data[i] = out[i] << 6;
     }
 
 

@@ -138,7 +138,7 @@ bool DRMDeviceInfo::export_buffer(DmaBuffer **db, int num_bufs, int bytes_pp,
       MSG("%d: bo_handles = %d - offsets = %d ", i, bo_handles[0], offsets[0]);
       MSG("%d", ret);
     }
-    MSG("AFTER fd = %d", fd);
+    MSG("fd = %d", fd);
     for (int i=0;i<num_bufs;i++) {
       MSG("%d: buf->width = %d - buf->height = %d - buf->fourcc = %d - buf->pitches = %d -" \
           " buf->fb_id = %d", i, db[i]->width, db[i]->height, db[i]->fourcc, db[i]->pitches[0], db[i]->fb_id);
@@ -308,8 +308,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
-    // MSG("Plane0: %dx%d", plane0->width, plane0->height);
-    // MSG("Plane1: %dx%d", plane1->width, plane1->height);
+    DBG("Plane0: %dx%d", plane0->width, plane0->height);
+    DBG("Plane1: %dx%d", plane1->width, plane1->height);
     // sleep(2);
     if (!i) {
   		add_property(fd, req, props, plane_id[i], "SRC_W", plane0->width << 16);
@@ -319,13 +319,21 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 
     }
     else {
-      add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width << 16);
-  		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height << 16);
-      // add_property(fd, req, props, plane_id[i], "global_alpha", 10);
-      // add_property(fd, req, props, plane_id[i], "pre_mult_alpha", 1);
+      // TODO : Replace this hardcode
+      if (plane1->height == 512) {
+    		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height/2 << 16);
+        add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width/2 << 16);
+        add_property(fd, req, props, plane_id[i], "global_alpha", 150);
+        add_property(fd, req, props, plane_id[i], "pre_mult_alpha", 1);
+      }
+      else {
+        add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height << 16);
+        add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width << 16);
+      }
+
       // Set global_alpha value if needed
-      if (alpha)
-        add_property(fd, req, props, plane_id[i], "global_alpha", alpha);
+      // if (alpha)
+      //   add_property(fd, req, props, plane_id[i], "global_alpha", alpha);
     }
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
 

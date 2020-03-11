@@ -110,7 +110,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
 
       bo_vpe_in[i]->fourcc = vip.src.fourcc;
 
-      // These are a good 1 -> 1 mapping 
+      // These are a good 1 -> 1 mapping
       if (vpe.dst.fourcc == V4L2_PIX_FMT_BGR24 || vpe.dst.fourcc == V4L2_PIX_FMT_BGR32)
         bo_vpe_out[i]->fourcc = FOURCC_STR("AR24");
       else
@@ -130,11 +130,11 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
       bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
 
+      // get the buffer addresses so that they can be used later.
       bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
       bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
       bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
       bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
-      // memset(bo_vpe_out[i]->buf_mem_addr[0], 255, )
 
       DBG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
       DBG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
@@ -192,7 +192,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   // initialize the second plane of data
   if (num_planes > 1) {
     if (net_type == "seg") {
-      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
+      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h/2, 2, 1)) {
         DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
@@ -312,44 +312,44 @@ void CamDisp::turn_off() {
  * "main" section beforehand if not already done.
  */
 
-int main(int argc, char *argv[]) {
-  int cap_w = 800;
-  int cap_h = 600;
-  int model_w = 768;
-  int model_h = 320;
-
-  // This is the type of neural net that is being targeted
-  std::string net_type = "seg";
-
-  // capture w, capture h, output w, output h, device name, is usb?
-  CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
-
-  cam.init_capture_pipeline(net_type);
-  auto start = std::chrono::high_resolution_clock::now();
-
-  int num_frames = 300;
-  if (argc > 1){
-    num_frames = stoi(argv[1]);
-  }
-
-  for (int i=0; i<num_frames; i++) {
-    if (argc <= 2) {
-      cam.grab_image();
-      // sleep(5);
-      // for (int count=0; count < model_w * model_h * 4; count++)
-      //   cout << data[count] << ' ' << count << ' ';
-      cam.disp_frame();
-    }
-    else
-      save_data(cam.grab_image(), model_w, model_h, 3, 4);
-  }
-  auto stop = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-  MSG("******************");
-  MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-      model_w, model_h, (float) num_frames/((float)duration.count()/1000));
-  MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
-      duration.count()/1000);
-  MSG("******************");
-  cam.turn_off();
-}
+// int main(int argc, char *argv[]) {
+//   int cap_w = 800;
+//   int cap_h = 600;
+//   int model_w = 768;
+//   int model_h = 320;
+//
+//   // This is the type of neural net that is being targeted
+//   std::string net_type = "seg";
+//
+//   // capture w, capture h, output w, output h, device name, is usb?
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
+//
+//   cam.init_capture_pipeline(net_type);
+//   auto start = std::chrono::high_resolution_clock::now();
+//
+//   int num_frames = 300;
+//   if (argc > 1){
+//     num_frames = stoi(argv[1]);
+//   }
+//
+//   for (int i=0; i<num_frames; i++) {
+//     if (argc <= 2) {
+//       cam.grab_image();
+//       // sleep(5);
+//       // for (int count=0; count < model_w * model_h * 4; count++)
+//       //   cout << data[count] << ' ' << count << ' ';
+//       cam.disp_frame();
+//     }
+//     else
+//       save_data(cam.grab_image(), model_w, model_h, 3, 4);
+//   }
+//   auto stop = std::chrono::high_resolution_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+//   MSG("******************");
+//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+//       model_w, model_h, (float) num_frames/((float)duration.count()/1000));
+//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+//       duration.count()/1000);
+//   MSG("******************");
+//   cam.turn_off();
+// }
