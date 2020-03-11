@@ -138,6 +138,7 @@ void write_binary_file(void *data, char *name, unsigned int size) {
   MSG("Saved file %s", name);
 }
 
+
 void print_v4l2buffer(v4l2_buffer *v) {
   string memory, type;
 
@@ -168,46 +169,24 @@ void print_v4l2buffer(v4l2_buffer *v) {
       break;
   }
   MSG("********V4L2 Buffer Status*********");
-  MSG("memory: %s\ntype: %s\nindex: %d\nbytesused %d\n" \
-      "flags: 0x%x\nlength: %d\nfd: %d\noffset: %d", memory.c_str(), type.c_str(), (int) v->index,
-      (int) v->bytesused, (unsigned int) v->flags, (int) v->length, (int) v->m.fd, (int) v->m.offset);
-  MSG("\b***************END*****************\n");
-}
-
-
-void print_v4l2_plane_buffer(v4l2_buffer *v) {
-  string memory, type;
-
-  switch (v->memory) {
-    case V4L2_MEMORY_MMAP:
-      memory = "V4L2_MEMORY_MMAP";
-      break;
-    case V4L2_MEMORY_DMABUF:
-      memory = "V4L2_MEMORY_DMABUF";
-      break;
-    case V4L2_MEMORY_USERPTR:
-      memory = "V4L2_MEMORY_USERPTR";
-      break;
+  if (v->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE || v->type ==
+    V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+    MSG("memory: %s",memory.c_str());
+    MSG("type: %s",type.c_str());
+    MSG("index: %d",v->index);
+    MSG("length: %d", v->length);
+    MSG("bytesused: %d", v->m.planes[0].bytesused);
+    MSG("flags: 0x%x", v->flags);
+    MSG("fd: %d", v->m.planes[0].m.fd);
+    MSG("offset: %d", v->m.planes[0].m.mem_offset);
   }
-
-  switch (v->type) {
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-      type = "V4L2_BUF_TYPE_VIDEO_CAPTURE";
-      break;
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-      type = "V4L2_BUF_TYPE_VIDEO_OUTPUT";
-      break;
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-      type = "V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE";
-      break;
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-      type = "V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE";
-      break;
+  if (v->type == V4L2_BUF_TYPE_VIDEO_OUTPUT || v->type ==
+    V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+    MSG("memory: %s\ntype: %s\nindex: %d\n" \
+        "flags: 0x%x\nlength: %d\nfd: %d\noffset: %d", memory.c_str(),
+        type.c_str(), (int) v->index, (unsigned int) v->flags, v->m.fd,
+        (unsigned int) v->length, (unsigned int) v->m.offset);
   }
-  MSG("********V4L2 Buffer Status*********");
-  MSG("memory: %s\ntype: %s\nindex: %d\n" \
-      "flags: 0x%x\nlength: %d\nfd: %d\noffset: %d", memory.c_str(), type.c_str(), (int) v->index,
-    (unsigned int) v->flags,v->m.planes[0].m.fd, (int) v->m.planes[0].length, (int) v->m.planes[0].m.mem_offset);
   MSG("\b***************END*****************\n");
 }
 

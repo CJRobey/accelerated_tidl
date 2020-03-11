@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -25,12 +26,6 @@ extern "C" {
 using namespace std;
 using namespace chrono;
 
-#define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
-    ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
-    ((uint32_t)(uint8_t)(d) << 24 ))
-#define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
-
-
 CamDisp::CamDisp() {
   /* The VIP and VPE default constructors will be called since they are member
    * variables
@@ -46,123 +41,202 @@ CamDisp::CamDisp() {
 
 
 CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
-  string dev_name, bool usb) {
+  string dev_name, bool usb, std::string net_type) {
   src_w = _src_w;
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
   alpha = _alpha;
+  frame_num = 0;
+
   if (usb) {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
+    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
   }
   else {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3, V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
+    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
+    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
   }
-  vpe = VPEObj(src_w, src_h, 2, V4L2_PIX_FMT_YUYV, dst_w, dst_h, 3, V4L2_PIX_FMT_BGR24, 3);
 
-  frame_num = 0;
+  // these values should correspond to the FOUCC_STR values for the src and dst
+  // ImageParams' of the vpe
+  int vpe_src_bytes_pp = 2;
+  int vpe_dst_bytes_pp = 4;
+
+  vpe = VPEObj(src_w, src_h, vpe_src_bytes_pp, FOURCC_STR("YUYV"),
+    V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, V4L2_PIX_FMT_BGR32,
+    V4L2_MEMORY_DMABUF, 3);
+
 }
 
 
-bool CamDisp::init_capture_pipeline() {
+bool CamDisp::init_capture_pipeline(string net_type) {
 
   /* set num_planes to 1 for no output layer and num_planes to 2 for the output
    * layer to be shown
    */
   int num_planes = 2;
+  if (num_planes < 2)
+    alpha = 0;
+
+  vpe.open_fd();
   drm_device.drm_init_device(num_planes);
   vip.device_init();
   vpe.open_fd();
 
-  int export_fds[vip.src.num_buffers];
+  // vip.device_init();
+
+  int in_export_fds[vip.src.num_buffers];
+  int out_export_fds[vpe.m_num_buffers];
   // Create an "omap_device" from the fd
   struct omap_device *dev = omap_device_new(drm_device.fd);
   bo_vpe_in = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
+  bo_vpe_out = (class DmaBuffer **) malloc(vip.src.num_buffers * sizeof(class DmaBuffer *));
 
-  if (!bo_vpe_in) {
+  if (!bo_vpe_in || !bo_vpe_out) {
     ERROR("memory allocation failure, exiting \n");
     exit(EXIT_FAILURE);
   }
 
   for (int i = 0; i < vip.src.num_buffers; i++) {
       bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+      bo_vpe_out[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+
       bo_vpe_in[i]->width = src_w;
+      bo_vpe_out[i]->width = dst_w;
+
       bo_vpe_in[i]->height = src_h;
+      bo_vpe_out[i]->height = dst_h;
+
       bo_vpe_in[i]->fourcc = vip.src.fourcc;
 
+      // These are a good 1 -> 1 mapping
+      if (vpe.dst.fourcc == V4L2_PIX_FMT_BGR24 || vpe.dst.fourcc == V4L2_PIX_FMT_BGR32)
+        bo_vpe_out[i]->fourcc = FOURCC_STR("AR24");
+      else
+        bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
+
       // allocate space for buffer object (bo)
-      bo_vpe_in[i]->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
+      bo_vpe_in[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
+      bo_vpe_out[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
+
       // define the object
-  		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*2, OMAP_BO_SCANOUT | OMAP_BO_WC);
+  		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*vpe.src.bytes_pp,
+        OMAP_BO_SCANOUT | OMAP_BO_WC);
+      bo_vpe_out[i]->bo[0] = omap_bo_new(dev, dst_w*dst_h*vpe.dst.bytes_pp,
+        OMAP_BO_SCANOUT | OMAP_BO_WC);
+
       // give the object a file descriptor for dmabuf v4l2 calls
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
-      if (vip.src.memory == V4L2_MEMORY_MMAP) {
-        bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
-        bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
-      }
+      bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
 
-      MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
-      export_fds[i] = bo_vpe_in[i]->fd[0];
+      // get the buffer addresses so that they can be used later.
+      bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+      bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+      bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+      bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
+
+      DBG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
+      DBG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
+      in_export_fds[i] = bo_vpe_in[i]->fd[0];
+      out_export_fds[i] = bo_vpe_out[i]->fd[0];
   }
 
-  if(!vip.request_export_buf(export_fds)) {
-  // if (!vip.request_buf()) {
+  if(!vip.request_export_buf(in_export_fds)) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
-  MSG("Successfully requested VIP buffers\n\n");
+  DBG("Successfully requested VIP buffers\n\n");
 
   if (!vpe.vpe_input_init()) {
     ERROR("Input layer initialization failed.");
     return false;
   }
-  MSG("Input layer initialization done\n");
+  DBG("Input layer initialization done\n");
 
-
-  if(!vpe.vpe_output_init()) {
+  if(!vpe.vpe_output_init(out_export_fds)) {
     ERROR("Output layer initialization failed.");
     return false;
   }
-  MSG("Output layer initialization done\n");
+
+  DBG("Output layer initialization done\n");
 
   for (int i=0; i < vip.src.num_buffers; i++) {
     // for (int p=0;p<vip.src.num_buffers; p++)
-    //   MSG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
+    //   DBG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
     if(!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
   }
-  MSG("VIP initial buffer queues done\n");
+  DBG("VIP initial buffer queues done\n");
 
   for (int i=0; i < vpe.m_num_buffers; i++) {
-    if(!vpe.output_qbuf(i)) {
+    if(!vpe.output_qbuf(i, out_export_fds[i])) {
       ERROR(" initial queue VPE output buffer #%d failed", i);
       return false;
     }
   }
-  MSG("VPE initial output buffer queues done\n");
+
+  DBG("VPE initial output buffer queues done\n");
+
+  vpe.m_field = V4L2_FIELD_ANY;
+  if (drm_device.export_buffer(bo_vpe_out, vpe.m_num_buffers, vpe.dst.bytes_pp, 0)){
+    DBG("Buffer from vpe exported");
+  }
+  else {
+    ERROR("Failed to export buffer to display with byes_pp = %d", vpe.dst.bytes_pp);
+    return false;
+  }
+
+  // initialize the second plane of data
+  if (num_planes > 1) {
+    if (net_type == "seg") {
+      // since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
+      // this buffer needs to be half its normal size. There are adjustments
+      // in disp_obj as well
+      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h/2, 2, 1)) {
+        DBG("\nSegmentation overlay plane successfully allocated");
+        for (int b=0; b<3; b++) {
+          print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
+        }
+      }
+      else {
+        ERROR("DRM failed to allocate buffers for the overlay plane\n" \
+              "Check that parameters are valid and size inputs are correct" \
+              "'modetest -p' will give more information on plane specs");
+        return false;
+      }
+    }
+    else if (net_type == "ssd") {
+      if(drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
+        DBG("\nBounding Box overlay plane successfully allocated");
+        for (int b=0; b<3; b++) {
+          print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
+        }
+      }
+      else {
+        ERROR("DRM failed to allocate buffers for the overlay plane\n" \
+              "Check that parameters are valid and size inputs are correct" \
+              "'modetest -p' will give more information on plane specs");
+        return false;
+      }
+    }
+  }
 
   // begin streaming the capture through the VIP
   if (!vip.stream_on()) return false;
-  MSG("Streaming VIP");
-
   // begin streaming the output of the VPE
   if (!vpe.stream_on(1)) return false;
 
-  vpe.m_field = V4L2_FIELD_ANY;
-  drm_device.export_buffer(bo_vpe_in, vpe.m_num_buffers, 2, 0);
-
-  drm_device.get_vid_buffers(3, FOURCC_STR("RA24"), dst_w, dst_h, 4, 1);
-  drm_device.drm_init_dss(&vip, alpha);
-
-
+  // plane 0 and 1 should have the same parameters in this case
+  drm_device.drm_init_dss(&vpe.dst, &vpe.dst, alpha);
 
   return true;
 }
 
 void CamDisp::disp_frame() {
-  drm_device.disp_frame(vip_frame_num);
+  drm_device.disp_frame(disp_frame_num);
 }
 
 void *CamDisp::grab_image() {
@@ -171,7 +245,7 @@ void *CamDisp::grab_image() {
      * the data pointed to by *imagedata could be corrupted.
      */
     if (stop_after_one) {
-      vpe.output_qbuf(frame_num);
+      vpe.output_qbuf(frame_num, bo_vpe_out[frame_num]->fd[0]);
       frame_num = vpe.input_dqbuf();
       vip.queue_buf(bo_vpe_in[frame_num]->fd[0], frame_num);
     }
@@ -179,10 +253,13 @@ void *CamDisp::grab_image() {
     /* dequeue the vip */
     frame_num = vip.dequeue_buf();
     if (vip.src.memory == V4L2_MEMORY_MMAP) {
-      memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0], vip.src.base_addr[frame_num], vip.src.size);
+      MSG("memcpy from address %p to address %p of size 0x%x",
+        vip.src.base_addr[frame_num], bo_vpe_in[frame_num]->buf_mem_addr[0],
+        vip.src.size);
+      memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0],
+        vip.src.base_addr[frame_num], vip.src.size);
     }
-    // if no display, then the api is not called
-    vip_frame_num = frame_num;
+
 
     /* queue that frame onto the vpe */
     if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
@@ -200,9 +277,12 @@ void *CamDisp::grab_image() {
     /* Dequeue the frame of the ready data */
     frame_num = vpe.output_dqbuf();
 
-    /**********DATA IS HERE!!************/
-    void *imagedata = (void *)vpe.dst.base_addr[frame_num];
+    // if no display, then the api is not called
+    disp_frame_num = frame_num;
 
+    /**********DATA IS HERE!!************/
+    void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
+    DBG("Image data at %p of size 0x%x", imagedata, vpe.dst.size);
     return imagedata;
 }
 
@@ -241,11 +321,13 @@ void CamDisp::turn_off() {
 //   int model_w = 768;
 //   int model_h = 320;
 //
+//   // This is the type of neural net that is being targeted
+//   std::string net_type = "seg";
+//
 //   // capture w, capture h, output w, output h, device name, is usb?
-//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true);
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
 //
-//   cam.init_capture_pipeline();
-//
+//   cam.init_capture_pipeline(net_type);
 //   auto start = std::chrono::high_resolution_clock::now();
 //
 //   int num_frames = 300;
@@ -254,18 +336,21 @@ void CamDisp::turn_off() {
 //   }
 //
 //   for (int i=0; i<num_frames; i++) {
-//     if (argc <= 2)
+//     if (argc <= 2) {
 //       cam.grab_image();
+//       // sleep(5);
+//       // for (int count=0; count < model_w * model_h * 4; count++)
+//       //   cout << data[count] << ' ' << count << ' ';
+//       cam.disp_frame();
+//     }
 //     else
-//       save_data(cam.grab_image(), model_w, model_h, 3, 3);
-//     //drm_device.disp_frame(NULL);
+//       save_data(cam.grab_image(), model_w, model_h, 3, 4);
 //   }
 //   auto stop = std::chrono::high_resolution_clock::now();
 //   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
 //   MSG("******************");
 //   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-//
-//   model_w, model_h, (float) num_frames/((float)duration.count()/1000));
+//       model_w, model_h, (float) num_frames/((float)duration.count()/1000));
 //   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
 //       duration.count()/1000);
 //   MSG("******************");

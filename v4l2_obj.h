@@ -19,12 +19,13 @@ public:
   int size;
   int type;
   int size_uv;
-  bool coplanar;
+  int bytes_pp = 0;
+  bool coplanar = false;
   int memory;
   v4l2_format fmt;
   v4l2_colorspace colorspace;
-  //v4l2_buffer *v4l2bufs;
   v4l2_buffer **v4l2bufs;
+  v4l2_plane **v4l2planes;
 
   int num_buffers;
 };
@@ -41,16 +42,17 @@ public:
 
   VPEObj();
   VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
-    int dst_w, int dst_h, int dst_bytes_per_pixel, int dst_fourcc, int num_buffers);
+    int src_memory, int dst_w, int dst_h, int dst_bytes_per_pixel,
+    int dst_fourcc, int dst_memory, int num_buffers);
   ~VPEObj();
   bool open_fd(void);
   void vpe_close();
   int set_src_format();
   int set_dst_format();
   bool vpe_input_init();
-  bool vpe_output_init();
+  bool vpe_output_init(int *export_fds);
   bool input_qbuf(int fd, int index);
-  bool output_qbuf(int index);
+  bool output_qbuf(int index, int fd);
   bool stream_on(int layer);
   bool stream_off(int layer);
   int input_dqbuf();

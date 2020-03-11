@@ -46,12 +46,16 @@ void VIPObj::device_init(){
     /* Open the capture device */
     m_fd = open(m_dev_name.c_str(), O_RDWR);
 
-    if (m_fd <= 0) {
+    if (m_fd < 0) {
         ERROR("Cannot open %s device\n\n", m_dev_name.c_str());
         return;
     }
 
     MSG("\n%s: Opened Channel at fd %d\n", m_dev_name.c_str(), m_fd);
+    if (m_fd == 0) {
+      MSG("WARNING: Capture device opened fd 0. There may be an issue with stdin.");
+      sleep(1.5);
+    }
 
     /* Check if the device is capable of streaming */
     if (ioctl(m_fd, VIDIOC_QUERYCAP, &capability) < 0) {
@@ -116,8 +120,13 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.num_buffers = num_buf;
     src.type=(v4l2_buf_type) type;
     src.fourcc = pix_fmt;
-    if (src.fourcc == V4L2_PIX_FMT_YUYV)
-      src.size = w*h*2;
+    if (src.fourcc == V4L2_PIX_FMT_YUYV) {
+      src.bytes_pp = 2;
+    }
+    else {
+      src.bytes_pp = 4;
+    }
+    src.size = w*h*src.bytes_pp;
     src.memory = memory;
     if (src.memory == V4L2_MEMORY_MMAP)
       src.fmt.fmt.pix.field = V4L2_FIELD_NONE;
@@ -155,48 +164,6 @@ bool VIPObj::request_buf(){
     return true;
 }
 
-
-// /* In this example application, user space allocates the buffers and
-//  * provides the buffer fd to be exported to the V4L2 driver
-// */
-// bool VIPObj::request_export_buf(int * export_fds){
-//     struct v4l2_requestbuffers reqbuf;
-//     int ret;
-//     memset(&reqbuf, 0, sizeof(reqbuf));
-//     reqbuf.type = src.type;
-//     reqbuf.memory = src.memory;
-//     reqbuf.count = src.num_buffers;
-//
-//     ret = ioctl(m_fd, VIDIOC_REQBUFS, &reqbuf);
-//     if (ret < 0) {
-//         ERROR("VIDIOC_REQBUFS failed: %s (%d)", strerror(errno), ret);
-//         return false;
-//     }
-//
-//     src.num_buffers = reqbuf.count;
-//     MSG("Allocated %d buffers", reqbuf.count);
-//
-//     src.v4l2bufs = (struct v4l2_buffer *) calloc( reqbuf.count, sizeof(struct v4l2_buffer));
-//
-//     for (int i=0;i<(int)reqbuf.count; i++) {
-//       memset(src.v4l2bufs[i], 0, sizeof(*src.v4l2bufs[i]));
-//       src.v4l2bufs[i]->type = src.type;
-//       src.v4l2bufs[i]->memory = src.memory;
-//       src.v4l2bufs[i]->index = i;
-//
-//       ret = ioctl(m_fd, VIDIOC_QUERYBUF, src.v4l2bufs[i]);
-//       if (ret) {
-//   			ERROR("VIDIOC_QUERYBUF failed: %s (%d)", strerror(errno), ret);
-//   			return false;
-//       }
-//
-//       src.v4l2bufs[i]->m.fd = export_fds[i];
-//       MSG("Query buf #%d - exporting fd %d", i, export_fds[i]);
-//       print_v4l2buffer(src.v4l2bufs[i]);
-//     }
-//
-//     return true;
-// }
 
 /* In this example application, user space allocates the buffers and
  * provides the buffer fd to be exported to the V4L2 driver
@@ -294,7 +261,6 @@ bool VIPObj::queue_buf(int fd, int index) {
   	int			ret = -1;
 
     if (src.memory == V4L2_MEMORY_MMAP) {
-      MSG("Queueing MMAP buffer");
       for (int i=0; i<src.num_buffers; i++)
         if (src.v4l2bufs[i]->index == (unsigned int) index)
           buf = src.v4l2bufs[i];
