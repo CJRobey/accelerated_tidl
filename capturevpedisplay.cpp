@@ -99,47 +99,47 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   }
 
   for (int i = 0; i < vip.src.num_buffers; i++) {
-      bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
-      bo_vpe_out[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+    bo_vpe_in[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
+    bo_vpe_out[i] = (class DmaBuffer *) malloc(sizeof(class DmaBuffer));
 
-      bo_vpe_in[i]->width = src_w;
-      bo_vpe_out[i]->width = dst_w;
+    bo_vpe_in[i]->width = src_w;
+    bo_vpe_out[i]->width = dst_w;
 
-      bo_vpe_in[i]->height = src_h;
-      bo_vpe_out[i]->height = dst_h;
+    bo_vpe_in[i]->height = src_h;
+    bo_vpe_out[i]->height = dst_h;
 
-      bo_vpe_in[i]->fourcc = vip.src.fourcc;
+    bo_vpe_in[i]->fourcc = vip.src.fourcc;
 
-      // These are a good 1 -> 1 mapping
-      if (vpe.dst.fourcc == V4L2_PIX_FMT_BGR24 || vpe.dst.fourcc == V4L2_PIX_FMT_BGR32)
-        bo_vpe_out[i]->fourcc = FOURCC_STR("AR24");
-      else
-        bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
+    // These are a good 1 -> 1 mapping
+    if (vpe.dst.fourcc == V4L2_PIX_FMT_BGR24 || vpe.dst.fourcc == V4L2_PIX_FMT_BGR32)
+      bo_vpe_out[i]->fourcc = FOURCC_STR("AR24");
+    else
+      bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
 
-      // allocate space for buffer object (bo)
-      bo_vpe_in[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
-      bo_vpe_out[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
+    // allocate space for buffer object (bo)
+    bo_vpe_in[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
+    bo_vpe_out[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
 
-      // define the object
-  		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*vpe.src.bytes_pp,
-        OMAP_BO_SCANOUT | OMAP_BO_WC);
-      bo_vpe_out[i]->bo[0] = omap_bo_new(dev, dst_w*dst_h*vpe.dst.bytes_pp,
-        OMAP_BO_SCANOUT | OMAP_BO_WC);
+    // define the object
+		bo_vpe_in[i]->bo[0] = omap_bo_new(dev, src_w*src_h*vpe.src.bytes_pp,
+      OMAP_BO_SCANOUT | OMAP_BO_WC);
+    bo_vpe_out[i]->bo[0] = omap_bo_new(dev, dst_w*dst_h*vpe.dst.bytes_pp,
+      OMAP_BO_SCANOUT | OMAP_BO_WC);
 
-      // give the object a file descriptor for dmabuf v4l2 calls
-      bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
-      bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
+    // give the object a file descriptor for dmabuf v4l2 calls
+    bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
+    bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
 
-      // get the buffer addresses so that they can be used later.
-      bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
-      bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
-      bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
-      bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
+    // get the buffer addresses so that they can be used later.
+    bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+    bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+    bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+    bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
 
-      DBG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
-      DBG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
-      in_export_fds[i] = bo_vpe_in[i]->fd[0];
-      out_export_fds[i] = bo_vpe_out[i]->fd[0];
+    DBG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
+    DBG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
+    in_export_fds[i] = bo_vpe_in[i]->fd[0];
+    out_export_fds[i] = bo_vpe_out[i]->fd[0];
   }
 
   if(!vip.request_export_buf(in_export_fds)) {
@@ -195,7 +195,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       // since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
       // this buffer needs to be half its normal size. There are adjustments
       // in disp_obj as well
-      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h/2, 2, 1)) {
+      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
         DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);

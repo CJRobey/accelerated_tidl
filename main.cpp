@@ -380,20 +380,24 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             ExecutionObjectPipeline* eop = eops[frame_idx % num_eops];
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait()) {
-                if (opts.net_type == "ssd")
-                  WriteFrameOutputSSD(*eop, c, opts, cam);
-                // else
-                //   WriteFrameOutputSEG(*eop, c, opts, cam);
-                cam.disp_frame();
+              auto wrStart = high_resolution_clock::now();
+              if (opts.net_type == "ssd")
+                WriteFrameOutputSSD(*eop, c, opts, cam);
+              else
+                WriteFrameOutputSEG(*eop, c, opts, cam);
+              cam.disp_frame();
+              auto wrStop = high_resolution_clock::now();
+              auto wrDuration = duration_cast<milliseconds>(wrStop - wrStart);
+              cout << "Overlay write time:" << wrDuration.count() << " ms" << endl;
             }
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
-            if (opts.net_type == "ssd") {
+        //    if (opts.net_type == "ssd") {
               ReadFrameSSD(*eop, frame_idx, c, opts, cam, ifs);
-            }
-            else if (opts.net_type == "seg") {
-              ReadFrameSEG(*eop, frame_idx, c, opts, cam, ifs);
-            }
+      //      }
+            // else if (opts.net_type == "seg") {
+            //   ReadFrameSEG(*eop, frame_idx, c, opts, cam, ifs);
+            // }
             auto rdStop = high_resolution_clock::now();
             auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
             cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
@@ -643,34 +647,30 @@ bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
     int width          = c.inWidth;
     int height         = c.inHeight;
     int channel_size   = width * height;
-    uint16_t *disp_data = (uint16_t *) cap.drm_device.plane_data_buffer[1][cap.frame_num]->buf_mem_addr[0];
+    uint16_t *disp_data = (uint16_t *)
+      cap.drm_device.plane_data_buffer[1][cap.disp_frame_num]->buf_mem_addr[0];
+
     for (int i = 0; i < channel_size; i++) {
-      disp_data[i] = out[i] << 6;
+      switch (out[i]) {
+        case 0:
+          disp_data[i] = out[i];
+          break;
+        case 1:
+          disp_data[i] = 0x0F00;
+          break;
+        case 2:
+          disp_data[i] = 0xF000;
+          break;
+        case 3:
+          disp_data[i] = 0x000F;
+          break;
+        case 4:
+          disp_data[i] = 0xFF00;
+          break;
+        default:
+          disp_data[i] = 0x0000;
+        }
     }
-
-
-    // if (opts.is_camera_input || opts.is_video_input)
-    // {
-    //     // cv::imshow("Segmentation", r_blend);
-    //     waitKey(1);
-    // }
-    // else
-    // {
-    //     int frame_index = eop.GetFrameIndex();
-    //     char outfile_name[64];
-    //     if (opts.input_file.empty())
-    //     {
-    //         snprintf(outfile_name, 64, "frame_%d.png", frame_index);
-    //         cv::imwrite(outfile_name, frame);
-    //         printf("Saving frame %d to: %s\n", frame_index, outfile_name);
-    //     }
-    //
-    //     snprintf(outfile_name, 64, "overlay_%d.png", frame_index);
-    //     cv::imwrite(outfile_name, r_blend);
-    //     printf("Saving frame %d overlayed with segmentation to: %s\n",
-    //            frame_index, outfile_name);
-    // }
-
     return true;
 }
 

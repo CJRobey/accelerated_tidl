@@ -321,10 +321,10 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
     else {
       // TODO : Replace this hardcode
       if (plane1->height == 512) {
-    		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height/2 << 16);
-        add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width/2 << 16);
-        add_property(fd, req, props, plane_id[i], "global_alpha", 220);
-        add_property(fd, req, props, plane_id[i], "pre_mult_alpha", 1);
+    		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height << 16);
+        add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width << 16);
+        add_property(fd, req, props, plane_id[i], "global_alpha", 150);
+        // add_property(fd, req, props, plane_id[i], "pre_mult_alpha", 1);
       }
       else {
         add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height << 16);
