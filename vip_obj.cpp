@@ -122,8 +122,11 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
     src.fourcc = pix_fmt;
     if (src.fourcc == V4L2_PIX_FMT_YUYV) {
       src.bytes_pp = 2;
-      src.size = w*h*2;
     }
+    else {
+      src.bytes_pp = 4;
+    }
+    src.size = w*h*src.bytes_pp;
     src.memory = memory;
     if (src.memory == V4L2_MEMORY_MMAP)
       src.fmt.fmt.pix.field = V4L2_FIELD_NONE;

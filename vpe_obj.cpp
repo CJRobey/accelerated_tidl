@@ -34,7 +34,8 @@ void VPEObj::default_parameters(void) {
     src.fourcc = V4L2_PIX_FMT_YUYV;
     src.width = CAP_WIDTH;
     src.height = CAP_HEIGHT;
-    src.size = src.width * src.height * 2;
+    src.bytes_pp = 2;
+    src.size = src.width * src.height * src.bytes_pp;
     src.v4l2bufs = NULL;
     // OUTPUT is the input buffer of the VPE
     src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
@@ -45,7 +46,8 @@ void VPEObj::default_parameters(void) {
     dst.fourcc = V4L2_PIX_FMT_BGR24;
     dst.width = TIDL_MODEL_WIDTH;
     dst.height = TIDL_MODEL_HEIGHT;
-    dst.size = dst.width * dst.height * 3;
+    dst.bytes_pp = 3;
+    dst.size = dst.width * dst.height * dst.bytes_pp;
     dst.v4l2bufs = NULL;
     // CAPTURE is the output buffer of the VPE
     dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
@@ -180,13 +182,23 @@ bool VPEObj::vpe_output_init(int *export_fds)
 	fmt.fmt.pix_mp.field = m_field;
 	fmt.fmt.pix_mp.colorspace = dst.colorspace;
 	fmt.fmt.pix_mp.num_planes = dst.coplanar ? 2 : 1;
+  DBG("dst.fourcc = 0x%x", dst.fourcc);
+  DBG("YUYV is 0x%x", V4L2_PIX_FMT_YUYV);
+  DBG("AR24 is 0x%x", FOURCC_STR("AR24"));
+  DBG("AB12 is 0x%x", FOURCC_STR("AB12"));
+  DBG("dst.fourcc = 0x%x", fmt.fmt.pix_mp.pixelformat);
 
 	ret = ioctl(m_fd, VIDIOC_S_FMT, &fmt);
 	if (ret < 0) {
 		ERROR( "%s: vpe o/p: S_FMT failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
+  DBG("dst.fourcc = 0x%x", fmt.fmt.pix_mp.pixelformat);
   dst.size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+  // sleep(10);
+
+  DBG("dst.size was set at %d", dst.size);
+  sleep(1);
   dst.size_uv = fmt.fmt.pix_mp.plane_fmt[1].sizeimage;
 
 	ret = ioctl(m_fd, VIDIOC_G_FMT, &fmt);
@@ -218,14 +230,14 @@ bool VPEObj::vpe_output_init(int *export_fds)
     dst.v4l2bufs[i] = (struct v4l2_buffer *) malloc(sizeof(struct v4l2_buffer));
     dst.v4l2planes[i] = (struct v4l2_plane *) calloc(2, sizeof(struct v4l2_plane));
 
-    memset(dst.v4l2planes[i], 0, sizeof(*dst.v4l2planes[i]));
+    memset(&dst.v4l2planes[i][0], 0, sizeof(*dst.v4l2planes[i]));
     memset(dst.v4l2bufs[i], 0, sizeof(*dst.v4l2bufs[i]));
 
     dst.v4l2bufs[i]->type = dst.type;
     dst.v4l2bufs[i]->memory = dst.memory;
     dst.v4l2bufs[i]->length	= dst.coplanar ? 2 : 1;
     dst.v4l2bufs[i]->index = i;
-    dst.v4l2bufs[i]->m.planes = dst.v4l2planes[i];
+    dst.v4l2bufs[i]->m.planes = &dst.v4l2planes[i][0];
 
     ret = ioctl(m_fd, VIDIOC_QUERYBUF, dst.v4l2bufs[i]);
     if (ret) {
@@ -245,6 +257,7 @@ bool VPEObj::vpe_output_init(int *export_fds)
     		dst.v4l2planes[i][1].length = dst.v4l2planes[i][1].bytesused = dst.size_uv;
 
     	dst.v4l2planes[i][0].data_offset = dst.v4l2planes[i][1].data_offset = 0;
+      memset(&dst.v4l2planes[i][1], 0, sizeof(v4l2_plane));
       dst.v4l2bufs[i]->m.planes = &dst.v4l2planes[i][0];
       if (dst.memory == V4L2_MEMORY_DMABUF)
   	   dst.v4l2bufs[i]->m.planes[0].m.fd = export_fds[i];
@@ -487,7 +500,12 @@ VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
   dst.height = dst_h;
   dst.bytes_pp = dst_bytes_per_pixel;
   dst.size = dst_w*dst_h*dst_bytes_per_pixel;
+  DBG("dst.size was set at %d", dst.size);
+  sleep(1);
   dst.fourcc = dst_fourcc;
+  DBG("dst.fourcc = 0x%x", dst.fourcc);
+  DBG("YUYV is 0x%x", V4L2_PIX_FMT_YUYV);
+  DBG("AR24 is 0x%x", FOURCC_STR("AR24"));
   dst.memory = dst_memory;
 
   // open_fd();

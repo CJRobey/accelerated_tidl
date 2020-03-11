@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -24,12 +25,6 @@ extern "C" {
 #include "save_utils.h"
 using namespace std;
 using namespace chrono;
-
-#define FOURCC(a, b, c, d) ((uint32_t)(uint8_t)(a) | \
-    ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) | \
-    ((uint32_t)(uint8_t)(d) << 24 ))
-#define FOURCC_STR(str)    FOURCC(str[0], str[1], str[2], str[3])
-
 
 CamDisp::CamDisp() {
   /* The VIP and VPE default constructors will be called since they are member
@@ -62,11 +57,14 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
     vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
     V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
   }
+
+  // these values should correspond to the FOUCC_STR values for the src and dst
+  // ImageParams' of the vpe
   int vpe_src_bytes_pp = 2;
   int vpe_dst_bytes_pp = 4;
 
   vpe = VPEObj(src_w, src_h, vpe_src_bytes_pp, FOURCC_STR("YUYV"),
-    V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, FOURCC_STR("AR24"),
+    V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, V4L2_PIX_FMT_BGR32,
     V4L2_MEMORY_DMABUF, 3);
 
 }
@@ -111,7 +109,12 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       bo_vpe_out[i]->height = dst_h;
 
       bo_vpe_in[i]->fourcc = vip.src.fourcc;
-      bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
+
+      // These are a good 1 -> 1 mapping 
+      if (vpe.dst.fourcc == V4L2_PIX_FMT_BGR24 || vpe.dst.fourcc == V4L2_PIX_FMT_BGR32)
+        bo_vpe_out[i]->fourcc = FOURCC_STR("AR24");
+      else
+        bo_vpe_out[i]->fourcc = vpe.dst.fourcc;
 
       // allocate space for buffer object (bo)
       bo_vpe_in[i]->bo = (struct omap_bo **) malloc(4 *sizeof(omap_bo *));
@@ -127,15 +130,14 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       bo_vpe_in[i]->fd[0] = omap_bo_dmabuf(bo_vpe_in[i]->bo[0]);
       bo_vpe_out[i]->fd[0] = omap_bo_dmabuf(bo_vpe_out[i]->bo[0]);
 
-      if (vip.src.memory == V4L2_MEMORY_MMAP) {
-        bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
-        bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
-        bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
-        bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
-      }
+      bo_vpe_in[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+      bo_vpe_in[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_in[i]->bo[0]);
+      bo_vpe_out[i]->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+      bo_vpe_out[i]->buf_mem_addr[0] = omap_bo_map(bo_vpe_out[i]->bo[0]);
+      // memset(bo_vpe_out[i]->buf_mem_addr[0], 255, )
 
-      MSG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
-      MSG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
+      DBG("Exported file descriptor for bo_vpe_in[%d]: %d", i, bo_vpe_in[i]->fd[0]);
+      DBG("Exported file descriptor for bo_vpe_out[%d]: %d", i, bo_vpe_out[i]->fd[0]);
       in_export_fds[i] = bo_vpe_in[i]->fd[0];
       out_export_fds[i] = bo_vpe_out[i]->fd[0];
   }
@@ -144,30 +146,30 @@ bool CamDisp::init_capture_pipeline(string net_type) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
-  MSG("Successfully requested VIP buffers\n\n");
+  DBG("Successfully requested VIP buffers\n\n");
 
   if (!vpe.vpe_input_init()) {
     ERROR("Input layer initialization failed.");
     return false;
   }
-  MSG("Input layer initialization done\n");
+  DBG("Input layer initialization done\n");
 
   if(!vpe.vpe_output_init(out_export_fds)) {
     ERROR("Output layer initialization failed.");
     return false;
   }
 
-  MSG("Output layer initialization done\n");
+  DBG("Output layer initialization done\n");
 
   for (int i=0; i < vip.src.num_buffers; i++) {
     // for (int p=0;p<vip.src.num_buffers; p++)
-    //   MSG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
+    //   DBG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
     if(!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
   }
-  MSG("VIP initial buffer queues done\n");
+  DBG("VIP initial buffer queues done\n");
 
   for (int i=0; i < vpe.m_num_buffers; i++) {
     if(!vpe.output_qbuf(i, out_export_fds[i])) {
@@ -176,16 +178,14 @@ bool CamDisp::init_capture_pipeline(string net_type) {
     }
   }
 
-  MSG("VPE initial output buffer queues done\n");
-
-
+  DBG("VPE initial output buffer queues done\n");
 
   vpe.m_field = V4L2_FIELD_ANY;
   if (drm_device.export_buffer(bo_vpe_out, vpe.m_num_buffers, vpe.dst.bytes_pp, 0)){
     DBG("Buffer from vpe exported");
   }
   else {
-    ERROR("Failed to export buffer to display");
+    ERROR("Failed to export buffer to display with byes_pp = %d", vpe.dst.bytes_pp);
     return false;
   }
 
@@ -250,6 +250,9 @@ void *CamDisp::grab_image() {
     /* dequeue the vip */
     frame_num = vip.dequeue_buf();
     if (vip.src.memory == V4L2_MEMORY_MMAP) {
+      MSG("memcpy from address %p to address %p of size 0x%x",
+        vip.src.base_addr[frame_num], bo_vpe_in[frame_num]->buf_mem_addr[0],
+        vip.src.size);
       memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0],
         vip.src.base_addr[frame_num], vip.src.size);
     }
@@ -276,7 +279,7 @@ void *CamDisp::grab_image() {
 
     /**********DATA IS HERE!!************/
     void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
-    MSG("Image data at %p", imagedata);
+    DBG("Image data at %p of size 0x%x", imagedata, vpe.dst.size);
     return imagedata;
 }
 
@@ -309,41 +312,44 @@ void CamDisp::turn_off() {
  * "main" section beforehand if not already done.
  */
 
-// int main(int argc, char *argv[]) {
-//   int cap_w = 800;
-//   int cap_h = 600;
-//   int model_w = 1920;
-//   int model_h = 1080;
-//
-//   // This is the type of neural net that is being targeted
-//   std::string net_type = "seg";
-//
-//   // capture w, capture h, output w, output h, device name, is usb?
-//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
-//
-//   cam.init_capture_pipeline(net_type);
-//   auto start = std::chrono::high_resolution_clock::now();
-//
-//   int num_frames = 300;
-//   if (argc > 1){
-//     num_frames = stoi(argv[1]);
-//   }
-//
-//   for (int i=0; i<num_frames; i++) {
-//     if (argc <= 2) {
-//       cam.grab_image();
-//       cam.disp_frame();
-//     }
-//     else
-//       save_data(cam.grab_image(), model_w, model_h, 3, 4);
-//   }
-//   auto stop = std::chrono::high_resolution_clock::now();
-//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
-//   MSG("******************");
-//   MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
-//       model_w, model_h, (float) num_frames/((float)duration.count()/1000));
-//   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
-//       duration.count()/1000);
-//   MSG("******************");
-//   cam.turn_off();
-// }
+int main(int argc, char *argv[]) {
+  int cap_w = 800;
+  int cap_h = 600;
+  int model_w = 768;
+  int model_h = 320;
+
+  // This is the type of neural net that is being targeted
+  std::string net_type = "seg";
+
+  // capture w, capture h, output w, output h, device name, is usb?
+  CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
+
+  cam.init_capture_pipeline(net_type);
+  auto start = std::chrono::high_resolution_clock::now();
+
+  int num_frames = 300;
+  if (argc > 1){
+    num_frames = stoi(argv[1]);
+  }
+
+  for (int i=0; i<num_frames; i++) {
+    if (argc <= 2) {
+      cam.grab_image();
+      // sleep(5);
+      // for (int count=0; count < model_w * model_h * 4; count++)
+      //   cout << data[count] << ' ' << count << ' ';
+      cam.disp_frame();
+    }
+    else
+      save_data(cam.grab_image(), model_w, model_h, 3, 4);
+  }
+  auto stop = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+  MSG("******************");
+  MSG("Capture at %dx%d\nResized to %dx%d\nFrame rate %f",cap_w, cap_h,
+      model_w, model_h, (float) num_frames/((float)duration.count()/1000));
+  MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
+      duration.count()/1000);
+  MSG("******************");
+  cam.turn_off();
+}
