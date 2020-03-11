@@ -192,6 +192,9 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   // initialize the second plane of data
   if (num_planes > 1) {
     if (net_type == "seg") {
+      // since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
+      // this buffer needs to be half its normal size. There are adjustments
+      // in disp_obj as well 
       if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h/2, 2, 1)) {
         DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
