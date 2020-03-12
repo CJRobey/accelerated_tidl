@@ -60,7 +60,6 @@ using namespace chrono;
 
 #define NUM_VIDEO_FRAMES  100
 #define SSD_DEFAULT_CONFIG    "jdetnet_voc"
-#define SSD_DEFAULT_INPUT     "../test/testvecs/input/horse_768x320.y"
 #define SSD_DEFAULT_INPUT_FRAMES (1)
 #define SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE "./jdetnet_voc_objects.json"
 #define SSD_DEFAULT_OUTPUT_PROB_THRESHOLD  25
@@ -86,10 +85,10 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c);
 bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
-               CamDisp &cap, ifstream &ifs);
+               CamDisp &cap);
 bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
               const Configuration& c, const cmdline_opts_t& opts,
-              CamDisp &cap, ifstream &ifs);
+              CamDisp &cap);
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
                       const CamDisp& cam);
@@ -130,29 +129,37 @@ int main(int argc, char *argv[])
 
     // Process arguments
     cmdline_opts_t opts;
-
-    // choose the defaults based on the kind of network
-    if (!strcmp(argv[1],"ssd")) {
-      opts.config = SSD_DEFAULT_CONFIG;
-      opts.object_classes_list_file = SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE;
-      opts.num_eves = num_eves > 0 ? 1 : 0;
-      opts.num_dsps = num_dsps > 0 ? 1 : 0;
-      opts.input_file = SSD_DEFAULT_INPUT;
-      opts.output_prob_threshold = SSD_DEFAULT_OUTPUT_PROB_THRESHOLD;
-    }
-    else {
-      opts.config = SEG_DEFAULT_CONFIG;
-      opts.object_classes_list_file = SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE;
-      if (num_eves != 0) { opts.num_eves = 1;  opts.num_dsps = 0; }
-      else               { opts.num_eves = 0;  opts.num_dsps = 1; }
-
-    }
-
     if (! ProcessArgs(argc, argv, opts))
     {
         DisplayHelp();
         exit(EXIT_SUCCESS);
     }
+
+    MSG("net_type %s\nconfig %s\nobject_classes_list_file %s\nnum_eves %d\n" \
+        "num_dsps %d\noutput_prob_threshold %d", opts.net_type.c_str(), opts.config.c_str(),
+        opts.object_classes_list_file.c_str(), opts.num_eves, opts.num_dsps,
+        opts.output_prob_threshold);
+    // choose the defaults based on the kind of network of any field that was
+    // not populated
+    if (opts.net_type == "ssd") {
+
+      if (opts.config == "") opts.config = SSD_DEFAULT_CONFIG;
+      if (opts.object_classes_list_file == "") opts.object_classes_list_file =
+        SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE;
+      if (!opts.num_eves) opts.num_eves = num_eves > 0 ? 1 : 0;
+      if (!opts.num_dsps) opts.num_dsps = num_dsps > 0 ? 1 : 0;
+      if (!opts.output_prob_threshold) opts.output_prob_threshold =
+        SSD_DEFAULT_OUTPUT_PROB_THRESHOLD;
+    }
+    else {
+      if (opts.config == "") opts.config = SEG_DEFAULT_CONFIG;
+      if (opts.object_classes_list_file == "") opts.object_classes_list_file =
+        SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE;
+    }
+    MSG("net_type %s\nconfig %s\nobject_classes_list_file %s\nnum_eves %d\n" \
+        "num_dsps %d\noutput_prob_threshold %d",opts.net_type.c_str(), opts.config.c_str(),
+        opts.object_classes_list_file.c_str(), opts.num_eves, opts.num_dsps,
+        opts.output_prob_threshold);
 
     assert(opts.num_dsps != 0 || opts.num_eves != 0);
     if (opts.num_frames == 0)
@@ -246,12 +253,8 @@ bool RunConfiguration(const cmdline_opts_t& opts)
           e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c, 1);
         }
         else {
-          MSG("entering correct if");
           e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c);
-          MSG("eve executor created");
           e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c);
-          MSG("dsp executor created");
-
         }
         vector<ExecutionObjectPipeline *> eops;
         if (e_eve != nullptr && e_dsp != nullptr && (opts.net_type != "seg"))
@@ -370,10 +373,8 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
         // Allocate input/output memory for each EOP
         AllocateMemory(eops);
-        MSG("Memory allocated");
         chrono::time_point<chrono::steady_clock> tloop0, tloop1;
         tloop0 = chrono::steady_clock::now();
-        MSG("Clock started");
 
         // Process frames with available eops in a pipelined manner
         // additional num_eops iterations to flush pipeline (epilogue)
@@ -386,21 +387,26 @@ bool RunConfiguration(const cmdline_opts_t& opts)
               auto wrStart = high_resolution_clock::now();
               if (opts.net_type == "ssd")
                 WriteFrameOutputSSD(*eop, c, opts, cam);
-              else
+              else if ((opts.net_type == "seg") && (!quick_display)) {
                 WriteFrameOutputSEG(*eop, c, opts, cam);
+              }
+
               cam.disp_frame();
-              auto wrStop = high_resolution_clock::now();
-              auto wrDuration = duration_cast<milliseconds>(wrStop - wrStart);
-              cout << "Overlay write time:" << wrDuration.count() << " ms" << endl;
+
+              if (opts.verbose) {
+                auto wrStop = high_resolution_clock::now();
+                auto wrDuration = duration_cast<milliseconds>(wrStop - wrStart);
+                DBG("Overlay write time: %d ms", (int) wrDuration.count());
+              }
             }
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
-        //    if (opts.net_type == "ssd") {
-              ReadFrameSSD(*eop, frame_idx, c, opts, cam, ifs);
-      //      }
-            // else if (opts.net_type == "seg") {
-            //   ReadFrameSEG(*eop, frame_idx, c, opts, cam, ifs);
-            // }
+           if (opts.net_type != "seg" || !quick_display) {
+              ReadFrameSSD(*eop, frame_idx, c, opts, cam);
+           }
+           else {
+              ReadFrameSEG(*eop, frame_idx, c, opts, cam);
+           }
             auto rdStop = high_resolution_clock::now();
             auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
             cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
@@ -456,9 +462,8 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c)
 
 bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
-               CamDisp &cap, ifstream &ifs)
+               CamDisp &cap)
 {
-    MSG("Beginning read frame");
     if ((uint32_t)frame_idx >= opts.num_frames)
         return false;
 
@@ -481,9 +486,8 @@ bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
 
 bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
-               CamDisp &cap, ifstream &ifs)
+               CamDisp &cap)
 {
-    MSG("Beginning read frame");
     if ((uint32_t)frame_idx >= opts.num_frames)
         return false;
 
@@ -527,21 +531,12 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
     // clear the old rectangles
     memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0], 0, height*width*4);
 
-    /* Data is being read in as abgr - thus the user may control the alpha
+    /* Data is being read in as bgra - thus the user may control the alpha
      * values either from this write function or by passing in the alpha value
      * to the initializer of the CamDisp object. Value go from 0 (totally clear)
      * to 255 (opaque)
      */
     frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0]);
-
-    int frame_index = eop.GetFrameIndex();
-    char outfile_name[64];
-    if (opts.is_preprocessed_input)
-    {
-        snprintf(outfile_name, 64, "frame_%d.png", frame_index);
-        cv::imwrite(outfile_name, frame);
-        printf("Saving frame %d to: %s\n", frame_index, outfile_name);
-    }
 
     // Draw boxes around classified objects
     float *out = (float *) eop.GetOutputBufferPtr();
@@ -598,34 +593,6 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
 
         MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(), object_class.color.blue,
             object_class.color.green, object_class.color.red);
-    }
-
-    if (opts.is_camera_input || opts.is_video_input)
-    {
-        // cv::imshow("SSD_Multibox", frame);
-#ifdef DEBUG_FILES
-        // Image files can be converted into video using, example script
-        // (on desktop Ubuntu, with ffmpeg installed):
-        // ffmpeg -i multibox_%04d.png -vf "scale=(iw*sar)*max(768/(iw*sar)\,320/ih):ih*max(768/(iw*sar)\,320/ih), crop=768:320" -b:v 4000k out.mp4
-        // Update width 768, height 320, if necessary
-        snprintf(outfile_name, 64, "multibox_%04d.png", frame_index);
-        cv::imwrite(outfile_name, r_frame);
-#endif
-        waitKey(1);
-    }
-    else
-    {
-        // Resize to output width/height, keep aspect ratio
-        Mat r_frame;
-        uint32_t output_width = opts.output_width;
-        if (output_width == 0)  output_width = orig_width;
-        uint32_t output_height = (output_width*1.0f) / orig_width * orig_height;
-        cv::resize(frame, r_frame, Size(output_width, output_height));
-
-        snprintf(outfile_name, 64, "multibox_%d.png", frame_index);
-        cv::imwrite(outfile_name, frame);
-        printf("Saving frame %d with SSD multiboxes to: %s\n",
-               frame_index, outfile_name);
     }
 
     return true;
