@@ -83,10 +83,10 @@ bool RunConfiguration(const cmdline_opts_t& opts);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
                          int layers_group_id);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c);
-bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+bool ReadFrameInput(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap);
-bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
               const Configuration& c, const cmdline_opts_t& opts,
               CamDisp &cap);
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
@@ -283,7 +283,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             //    eop0:                   [eve0...][dsp0]
             //    eop1:                            [eve0...][dsp0]
             // Additional benefit of setting pipeline_depth to 2 is that
-            //    it can also overlap host ReadFrameSSD() with device processing:
+            //    it can also overlap host ReadFrameInput() with device processing:
             //    --------------------- time ------------------->
             //    eop0: [RF][eve0...][dsp0]
             //    eop1:     [RF]     [eve0...][dsp0]
@@ -303,7 +303,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             //
             // Use duplicate EOPs to do double buffering on frame input/output
             //    because each EOP has its own set of input/output buffers,
-            //    so that host ReadFrameSSD() can overlap device processing
+            //    so that host ReadFrameInput() can overlap device processing
             // Use one EO as an example, with different buffer_factor,
             //    we have different execution behavior:
             // If buffer_factor is set to 1 -> single buffering
@@ -340,7 +340,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
           // Use duplicate EOPs to do double buffering on frame input/output
           //    because each EOP has its own set of input/output buffers,
-          //    so that host ReadFrameSSD() can be overlapped with device processing
+          //    so that host ReadFrameInput() can be overlapped with device processing
           // Use one EO as an example, with different buffer_factor,
           //    we have different execution behavior:
           // If buffer_factor is set to 1 -> single buffering
@@ -402,10 +402,10 @@ bool RunConfiguration(const cmdline_opts_t& opts)
             // Read a frame and start processing it with current eo
             auto rdStart = high_resolution_clock::now();
            if (opts.net_type != "seg" || !quick_display) {
-              ReadFrameSSD(*eop, frame_idx, c, opts, cam);
+              ReadFrameInput(*eop, frame_idx, c, opts, cam);
            }
            else {
-              ReadFrameSEG(*eop, frame_idx, c, opts, cam);
+              ReadFrameIO(*eop, frame_idx, c, opts, cam);
            }
             auto rdStop = high_resolution_clock::now();
             auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
@@ -460,7 +460,12 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c)
     return new Executor(dt, ids, c);
 }
 
-bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+
+/* This function will read the captured frame into the input buffer of TIDL.
+ * However, the output buffer is left alone for TIDL to allocate and manage the
+ * memory.
+ */
+bool ReadFrameInput(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap)
 {
@@ -484,7 +489,12 @@ bool ReadFrameSSD(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     return true;
 }
 
-bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
+/* This function will read the captured frame into the input buffer of TIDL. It
+ * will also send the output of TIDL (still allocated/managed by TIDL) directly
+ * to the display system. This is an optimized display overlay method for
+ * something like a segmentation neural network.
+ */
+bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
                const Configuration& c, const cmdline_opts_t& opts,
                CamDisp &cap)
 {
@@ -512,7 +522,10 @@ bool ReadFrameSEG(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     return true;
 }
 
-// Create frame with boxes drawn around classified objects
+/* This function is ultimately just going to write a couple of bounding boxes
+ * directly onto the second plane of the DSS's buffer. When the disp_obj()
+ * function is called, the rectangles will be displayed.
+ */
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
                       const CamDisp& cam)
