@@ -60,12 +60,14 @@ public:
 		  unsigned int plane_id,
 		  const char *name, int value);
 	void drm_add_plane_property(drmModeAtomicReqPtr req, int alpha,
-		 													ImageParams *plane0, ImageParams *plane1);
+		 													ImageParams *plane0, ImageParams *plane1,
+														  std::string net_type);
 	unsigned int drm_reserve_plane(unsigned int *ptr_plane_id, int num_planes);
 	void drm_crtc_resolution();
 	void drm_restore_props();
 	int drm_init_device(int num_planes);
-	int drm_init_dss(ImageParams *plane0, ImageParams *plane1, int alpha);
+	int drm_init_dss(ImageParams *plane0, ImageParams *plane1, int alpha,
+									 std::string net_type);
 	void drm_exit_device();
 	void disp_frame(VIPObj *vip, int *fd);
 	void disp_frame(int frame_num);

@@ -79,7 +79,6 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
 	//and drmPrimeHandleToFD() to get the buffer descriptors
   buf->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
 	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
-  MSG("New buffer obj");
 	if (buf->bo[0]){
 		bo_handles[0] = omap_bo_handle(buf->bo[0]);
 	}
@@ -258,7 +257,8 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 
 void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
                                            int alpha, ImageParams *plane0,
-                                           ImageParams *plane1)
+                                           ImageParams *plane1, std::string
+                                           net_type)
 {
 	unsigned int i;
 	unsigned int crtc_x_val = 0;
@@ -293,9 +293,8 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 
 		//storing zorder val to restore it before quitting the demo
 		zorder_val[i] = get_drm_prop_val(props, "zorder");
-    MSG("num planes is %d", num_planes);
-    MSG("check plane data buffer at plane_data_buffer[%d]", i);
-    MSG("%p", plane_data_buffer[i][0]);
+    DBG("plane_data_buffer[%d][0] = ", i);
+    DBG("%p", plane_data_buffer[i][0]);
 
 		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[i][0]->fb_id);
 
@@ -304,22 +303,26 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 		add_property(fd, req, props, plane_id[i], "CRTC_ID", crtc_id);
 		add_property(fd, req, props, plane_id[i], "CRTC_X", crtc_x_val);
 		add_property(fd, req, props, plane_id[i], "CRTC_Y", crtc_y_val);
-		add_property(fd, req, props, plane_id[i], "CRTC_W", crtc_w_val);
-		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
+    if (net_type == "class") {
+  		add_property(fd, req, props, plane_id[i], "CRTC_W", crtc_w_val/2);
+  		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val/2);
+    }
+    else {
+      add_property(fd, req, props, plane_id[i], "CRTC_W", crtc_w_val);
+      add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val);
+    }
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
     DBG("Plane0: %dx%d", plane0->width, plane0->height);
     DBG("Plane1: %dx%d", plane1->width, plane1->height);
-    // sleep(2);
+
     if (!i) {
   		add_property(fd, req, props, plane_id[i], "SRC_W", plane0->width << 16);
   		add_property(fd, req, props, plane_id[i], "SRC_H", plane0->height << 16);
-      // add_property(fd, req, props, plane_id[i], "global_alpha", 10);
-      // add_property(fd, req, props, plane_id[i], "pre_mult_alpha", 1);
-
     }
     else {
-      // TODO : Replace this hardcode
+      // if we are doing a segmentation demo that needs the TIDL output and
+      // DSS plane1 input to be shared
       if (quick_display) {
     		add_property(fd, req, props, plane_id[i], "SRC_H", plane1->height/2 << 16);
         add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width/2 << 16);
@@ -329,10 +332,6 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
         add_property(fd, req, props, plane_id[i], "SRC_W", plane1->width << 16);
       }
       add_property(fd, req, props, plane_id[i], "global_alpha", alpha);
-
-      // Set global_alpha value if needed
-      // if (alpha)
-      //   add_property(fd, req, props, plane_id[i], "global_alpha", alpha);
     }
 		add_property(fd, req, props, plane_id[i], "zorder", _zorder_val++);
 
@@ -508,7 +507,8 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 /*
 * Set up the DSS for blending of video and graphics planes
 */
-int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int alpha)
+int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1,
+                                int alpha, std::string net_type)
 {
 	drmModeObjectProperties *props;
 	int ret;
@@ -574,7 +574,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int al
 
 	/* Set overlay plane properties like zorder, crtc_id, buf_id, src and */
 	/* dst w, h etc                                                       */
-	drm_add_plane_property(req, alpha, plane0, plane1);
+	drm_add_plane_property(req, alpha, plane0, plane1, net_type);
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
@@ -582,7 +582,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int al
 		drmModeAtomicCommit(fd, req, 0, 0);
 	}
 	else{
-		ERROR("ret from drmModeAtomicCommit = %d\n", ret);
+		ERROR("ret from drmModeAtomicCommit: %s (%d)\n", strerror(errno), ret);
 		return -1;
 	}
 
