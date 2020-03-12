@@ -96,6 +96,7 @@ public:
   unsigned int num_planes = 0;
   unsigned int num_jpeg;
   unsigned int display_xres, display_yres;
+	bool quick_display;
   bool pip;
   bool jpeg;
   bool exit;

@@ -200,34 +200,38 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     if (opts.num_eves == 0 || opts.num_dsps == 0)
         c.runFullNet = true;
 
-    /* This represents the alpha value of the second plane. 0 makes it clear
-     * and 255 makes it opaque
+    /* alpha_value of the second plane. 0 makes it clear and 255 makes it opaque
+     * cam_w, cam_h should be just over the model
      */
     CamDisp cam;
-    int alpha_value = 0;
+    int cap_w, cap_h, alpha_value;
+    bool quick_display = opts.quick_display;
     if (opts.net_type == "seg") {
-      cam = CamDisp(1280, 720, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
-        true, opts.net_type);
+      cap_w = 1280;
+      cap_h = 720;
+      alpha_value = 150;
     }
     else {
-      cam = CamDisp(800, 600, c.inWidth, c.inHeight, alpha_value, "/dev/video2",
-        true, opts.net_type);
+      cap_w = 800;
+      cap_h = 600;
+      alpha_value = 255;
+      quick_display = false;
     }
-    cam.init_capture_pipeline(opts.net_type);
 
-    // setup preprocessed input
-    ifstream ifs;
-    if (opts.is_preprocessed_input)
-    {
-        ifs.open(opts.input_file, ios::binary | ios::ate);
-        if (! ifs.good())
-        {
-            cerr << "Cannot open " << opts.input_file << endl;
-            return false;
-        }
-        num_frames_file = ((int) ifs.tellg()) /
-                          (c.inWidth * c.inHeight * c.inNumChannels);
+    // the quick display setting looks better with a darker second layer
+    if (quick_display) alpha_value = 215;
+
+    if (atoi(opts.input_file.c_str()) && (isdigit(atoi(opts.input_file.c_str())))) {
+      string device_name = "/dev/video" + opts.input_file;
+      cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
+        device_name, true, opts.net_type, quick_display);
     }
+    else {
+      cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
+        "/dev/video1", true, opts.net_type, quick_display);
+    }
+    if (!cam.init_capture_pipeline(opts.net_type))
+      return false;
 
     try
     {
@@ -235,7 +239,6 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         // and configuration specified
         // EVE will run layersGroupId 1 in the network, while
         // DSP will run layersGroupId 2 in the network
-
         Executor *e_dsp, *e_eve;
         MSG("Beginning to create executors for net_type %s", opts.net_type.c_str());
         if (opts.net_type == "ssd") {
