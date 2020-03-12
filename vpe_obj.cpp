@@ -523,16 +523,10 @@ VPEObj::VPEObj(int src_w, int src_h, int src_bytes_per_pixel, int src_fourcc,
   dst.height = dst_h;
   dst.bytes_pp = dst_bytes_per_pixel;
   dst.size = dst_w*dst_h*dst_bytes_per_pixel;
-  DBG("dst.size was set at %d", dst.size);
-  sleep(1);
   dst.fourcc = dst_fourcc;
-  DBG("dst.fourcc = 0x%x", dst.fourcc);
-  DBG("YUYV is 0x%x", V4L2_PIX_FMT_YUYV);
-  DBG("AR24 is 0x%x", FOURCC_STR("AR24"));
   dst.memory = dst_memory;
-
-  // open_fd();
 }
+
 
 VPEObj::~VPEObj(){
     free(src.v4l2bufs);
