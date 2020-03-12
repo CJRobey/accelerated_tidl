@@ -41,12 +41,13 @@ CamDisp::CamDisp() {
 
 
 CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
-  string dev_name, bool usb, std::string net_type) {
+  string dev_name, bool usb, std::string net_type, bool _quick_display) {
   src_w = _src_w;
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
   alpha = _alpha;
+  drm_device.quick_display = _quick_display;
   frame_num = 0;
 
   if (usb) {
