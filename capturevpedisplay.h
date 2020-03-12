@@ -55,7 +55,11 @@ public:
   CamDisp();
   CamDisp(int src_w, int src_h, int dst_w, int dst_h, int alpha,
     std::string dev_name, bool usb, std::string net_type, bool quick_display);
+<<<<<<< HEAD
   bool init_capture_pipeline();
+=======
+  bool init_capture_pipeline(std::string net_type);
+>>>>>>> dc2ad6421702777ae205595b969d95df3c87c2ed
   void *grab_image();
   void disp_frame();
   void init_vpe_stream();
