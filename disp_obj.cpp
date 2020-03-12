@@ -250,7 +250,7 @@ void DRMDeviceInfo::add_property(int fd, drmModeAtomicReqPtr req,
 				  const char *name, int value)
 {
 	unsigned int prop_id = find_drm_prop_id(props, name);
-	if(drmModeAtomicAddProperty(req, plane_id, prop_id, value) < 0){
+	if (drmModeAtomicAddProperty(req, plane_id, prop_id, value) < 0){
 		printf("failed to add property\n");
 	}
 }
@@ -270,7 +270,7 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 
 	for(i = 0; i < num_planes; i++){
 
-		// if(i) {
+		// if (i) {
 		// 	crtc_x_val = PIP_POS_X;
 		// 	crtc_y_val = PIP_POS_Y;
 		// 	crtc_w_val /= 3;
@@ -280,7 +280,7 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 		props = drmModeObjectGetProperties(fd, plane_id[i],
 			DRM_MODE_OBJECT_PLANE);
 
-		if(props == NULL){
+		if (props == NULL){
 			ERROR("drm obeject properties for plane type is NULL\n");
 			return;
 		}
@@ -347,7 +347,7 @@ unsigned int DRMDeviceInfo::drm_reserve_plane(unsigned int *ptr_plane_id,
 	int idx = 0;
 	drmModeObjectProperties *props;
 	drmModePlaneRes *res = drmModeGetPlaneResources(fd);
-	if(res == NULL){
+	if (res == NULL){
 		ERROR("plane resources not found\n");
 	}
 
@@ -450,7 +450,7 @@ void DRMDeviceInfo::drm_restore_props()
 		props = drmModeObjectGetProperties(fd, plane_id[i],
 			DRM_MODE_OBJECT_PLANE);
 
-		if(props == NULL){
+		if (props == NULL){
 			ERROR("drm obeject properties for plane type is NULL\n");
 			return;
 		}
@@ -461,7 +461,7 @@ void DRMDeviceInfo::drm_restore_props()
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-	if(!ret){
+	if (!ret){
 		drmModeAtomicCommit(fd, req, 0, 0);
 	}
 	else{
@@ -550,7 +550,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int al
 	/* Set CRTC properties */
 	props = drmModeObjectGetProperties(fd, crtc_id,
 		DRM_MODE_OBJECT_CRTC);
-  if(props == NULL){
+  if (props == NULL){
   	ERROR("drm obeject properties for plane type is NULL\n");
   	return -1;
   }
@@ -579,7 +579,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1, int al
 
 	//Commit all the added properties
 	ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-	if(!ret){
+	if (!ret){
 		drmModeAtomicCommit(fd, req, 0, 0);
 	}
 	else{
@@ -642,7 +642,7 @@ void DRMDeviceInfo::disp_frame(VIPObj *vip, int *exported_fds) {
     buf[i] = plane_data_buffer[i][frame_num];
     drmModeAtomicAddProperty(req, plane_id[i], prop_fbid, buf[i]->fb_id);
     ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-    if(!ret){
+    if (!ret){
       drmModeAtomicCommit(fd, req,
         DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
     }
@@ -694,7 +694,7 @@ void DRMDeviceInfo::disp_frame(int frame_num) {
     buf[i] = plane_data_buffer[i][frame_num];
     drmModeAtomicAddProperty(req, plane_id[i], prop_fbid, buf[i]->fb_id);
     ret = drmModeAtomicCommit(fd, req, DRM_MODE_ATOMIC_TEST_ONLY, 0);
-    if(!ret){
+    if (!ret){
       drmModeAtomicCommit(fd, req,
         DRM_MODE_PAGE_FLIP_EVENT | DRM_MODE_ATOMIC_NONBLOCK, &waiting_for_flip);
     }
@@ -741,7 +741,7 @@ void DRMDeviceInfo::disp_frame(int frame_num) {
 //     export_fds[i] = d.plane_data_buffer[0][i]->fd[0];
 //   }
 //
-//   if(!vip.request_export_buf(export_fds)) {
+//   if (!vip.request_export_buf(export_fds)) {
 //     ERROR("VIP buffer requests failed.");
 //     return false;
 //   }

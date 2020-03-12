@@ -559,6 +559,10 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
 
         const ObjectClass& object_class = object_classes->At(label);
 
+        // for now, we really just want the pedestrian label
+        if (object_class.label != "pedestrian")
+          continue;
+
         int thickness = 1;
         double scale = 0.6;
         int baseline = 0;
@@ -567,7 +571,7 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                                     thickness, &baseline);
         baseline += thickness;
 
-        if(opts.verbose) {
+        if (opts.verbose) {
             printf("%2d: (%d, %d) -> (%d, %d): %s, score=%f\n",
                i, xmin, ymin, xmax, ymax, object_class.label.c_str(), score);
         }
@@ -650,22 +654,23 @@ bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
     uint16_t *disp_data = (uint16_t *)
       cap.drm_device.plane_data_buffer[1][cap.disp_frame_num]->buf_mem_addr[0];
 
+    // Color fmt is 0bXXXXRRRRGGGGBBBB
     for (int i = 0; i < channel_size; i++) {
       switch (out[i]) {
-        case 0:
+        case 0: // background class
           disp_data[i] = out[i];
           break;
-        case 1:
+        case 1: // road class
+          disp_data[i] = 0x00F0;
+          break;
+        case 2: // pedestrian class
           disp_data[i] = 0x0F00;
           break;
-        case 2:
-          disp_data[i] = 0xF000;
-          break;
-        case 3:
+        case 3: // road sign class
           disp_data[i] = 0x000F;
           break;
-        case 4:
-          disp_data[i] = 0xFF00;
+        case 4: // vehicle class
+          disp_data[i] = 0x0FF0;
           break;
         default:
           disp_data[i] = 0x0000;

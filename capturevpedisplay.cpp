@@ -142,7 +142,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
     out_export_fds[i] = bo_vpe_out[i]->fd[0];
   }
 
-  if(!vip.request_export_buf(in_export_fds)) {
+  if (!vip.request_export_buf(in_export_fds)) {
     ERROR("VIP buffer requests failed.");
     return false;
   }
@@ -154,7 +154,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   }
   DBG("Input layer initialization done\n");
 
-  if(!vpe.vpe_output_init(out_export_fds)) {
+  if (!vpe.vpe_output_init(out_export_fds)) {
     ERROR("Output layer initialization failed.");
     return false;
   }
@@ -164,7 +164,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   for (int i=0; i < vip.src.num_buffers; i++) {
     // for (int p=0;p<vip.src.num_buffers; p++)
     //   DBG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
-    if(!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
+    if (!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
     }
@@ -172,7 +172,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   DBG("VIP initial buffer queues done\n");
 
   for (int i=0; i < vpe.m_num_buffers; i++) {
-    if(!vpe.output_qbuf(i, out_export_fds[i])) {
+    if (!vpe.output_qbuf(i, out_export_fds[i])) {
       ERROR(" initial queue VPE output buffer #%d failed", i);
       return false;
     }
@@ -195,7 +195,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       // since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
       // this buffer needs to be half its normal size. There are adjustments
       // in disp_obj as well
-      if(drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
+      if (drm_device.get_vid_buffers(3, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
         DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
@@ -209,7 +209,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       }
     }
     else if (net_type == "ssd") {
-      if(drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
+      if (drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
         DBG("\nBounding Box overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);

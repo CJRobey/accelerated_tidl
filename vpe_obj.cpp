@@ -253,7 +253,7 @@ bool VPEObj::vpe_output_init(int *export_fds)
     }
     if (dst.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
     	dst.v4l2planes[i][0].length = dst.v4l2planes[i][0].bytesused = dst.size;
-    	if(dst.coplanar)
+    	if (dst.coplanar)
     		dst.v4l2planes[i][1].length = dst.v4l2planes[i][1].bytesused = dst.size_uv;
 
     	dst.v4l2planes[i][0].data_offset = dst.v4l2planes[i][1].data_offset = 0;
@@ -292,14 +292,14 @@ bool VPEObj::input_qbuf(int fd, int index){
 	buf.index = index;
 
 	buf.field = m_field;
-	if(src.coplanar)
+	if (src.coplanar)
 		buf.length = 2;
 	else
 		buf.length = 1;
 
   if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
   	planes[0].length = planes[0].bytesused = src.size;
-  	if(src.coplanar)
+  	if (src.coplanar)
   		planes[1].length = planes[1].bytesused = src.size_uv;
 
   	planes[0].data_offset = planes[1].data_offset = 0;
@@ -332,14 +332,14 @@ bool VPEObj::output_qbuf(int index, int fd)
 	// buf.memory = dst.memory;
 	// buf.index = index;
 	// buf.m.planes = &planes[0];
-	// if(dst.coplanar)
+	// if (dst.coplanar)
 	// 	buf.length = 2;
 	// else
 	// 	buf.length = 1;
   //
   // if (dst.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
   // 	planes[0].length = planes[0].bytesused = dst.size;
-  // 	if(dst.coplanar)
+  // 	if (dst.coplanar)
   // 		planes[1].length = planes[1].bytesused = dst.size_uv;
   //
   // 	planes[0].data_offset = planes[1].data_offset = 0;
@@ -408,7 +408,7 @@ int VPEObj::output_dqbuf()
 	buf.memory = dst.memory;
   buf.m.planes = &planes[0];
 
-  if(dst.coplanar)
+  if (dst.coplanar)
 		buf.length = 2;
 	else
 		buf.length = 1;
