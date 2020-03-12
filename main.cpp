@@ -61,14 +61,45 @@ using namespace chrono;
 #define NUM_VIDEO_FRAMES  100
 #define SSD_DEFAULT_CONFIG    "jdetnet_voc"
 #define SSD_DEFAULT_INPUT_FRAMES (1)
-#define SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE "./jdetnet_voc_objects.json"
+#define SSD_DEFAULT_OBJECT_CLASSES_LIST_FILE "./configs/jdetnet_voc_objects.json"
 #define SSD_DEFAULT_OUTPUT_PROB_THRESHOLD  25
 
 #define SEG_NUM_VIDEO_FRAMES  300
 #define SEG_DEFAULT_CONFIG    "jseg21_tiscapes"
 #define SEG_DEFAULT_INPUT     "../test/testvecs/input/000100_1024x512_bgr.y"
 #define SEG_DEFAULT_INPUT_FRAMES  (9)
-#define SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE "jseg21_objects.json"
+#define SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE "./configs/jseg21_objects.json"
+
+#define MAX_NUM_ROI 4
+
+#ifdef TWO_ROIs
+#define RES_X 400
+#define RES_Y 300
+#define NUM_ROI_X 2
+#define NUM_ROI_Y 1
+#define X_OFFSET 0
+#define X_STEP   176
+#define Y_OFFSET 52
+#define Y_STEP   224
+#else
+#define RES_X 480
+#define RES_Y 480
+#define NUM_ROI_X 1
+#define NUM_ROI_Y 1
+#define X_OFFSET 10
+#define X_STEP   460
+#define Y_OFFSET 10
+#define Y_STEP   460
+#endif
+int IMAGE_CLASSES_NUM = 0;
+#define MAX_CLASSES 10
+#define MAX_SELECTED_ITEMS 10
+std::string labels_classes[MAX_CLASSES];
+int selected_items_size = 0;
+int selected_items[MAX_SELECTED_ITEMS];
+
+#define NUM_ROI (NUM_ROI_X * NUM_ROI_Y)
+
 
 /* Enable this macro to record individual output files and */
 /* resized, cropped network input files                    */
@@ -78,6 +109,13 @@ std::unique_ptr<ObjectClasses> object_classes;
 uint32_t orig_width;
 uint32_t orig_height;
 uint32_t num_frames_file;
+
+static int tf_postprocess(uchar *in, int out_size, int size, int roi_idx,
+                          int frame_idx, int f_id);
+static int ShowRegion(int roi_history[]);
+bool tf_expected_id(int id);
+// from most recent to oldest at top indices
+static int selclass_history[MAX_NUM_ROI][3];
 
 bool RunConfiguration(const cmdline_opts_t& opts);
 Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c,
@@ -96,6 +134,9 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
                       const cmdline_opts_t& opts, const CamDisp& cam);
+void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cap,
+                  const Configuration& c, uint32_t frame_idx, uint32_t num_eops,
+                  uint32_t num_eves, uint32_t num_dsps);
 
 static void DisplayHelp();
 void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
@@ -111,12 +152,93 @@ void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
 //   //But, for any additional operation on slider move, this is the place to insert code.
 // }
 
+
+Rect rect_crop[NUM_ROI];
+
+// TODO : Get rid of this
+void setup_rect_crop(){
+  for (int y = 0; y < NUM_ROI_Y; y ++) {
+     for (int x = 0; x < NUM_ROI_X; x ++) {
+        rect_crop[y * NUM_ROI_X + x] = Rect(X_OFFSET + x * X_STEP,
+                                           Y_OFFSET + y * Y_STEP, X_STEP, Y_STEP);
+        std::cout << "Rect[" << X_OFFSET + x * X_STEP << ", "
+                  << Y_OFFSET + y * Y_STEP << "]" << std::endl;
+     }
+  }
+}
+static int get_classindex(std::string str2find)
+{
+  if(selected_items_size >= MAX_SELECTED_ITEMS)
+  {
+     std::cout << "Max number of selected classes is reached! (" << selected_items_size << ")!" << std::endl;
+     return -1;
+  }
+  for (int i = 0; i < IMAGE_CLASSES_NUM; i ++)
+  {
+    if(labels_classes[i].compare(str2find) == 0)
+    {
+      selected_items[selected_items_size ++] = i;
+      return i;
+    }
+  }
+  std::cout << "Not found: " << str2find << std::endl << std::flush;
+  return -1;
+}
+
+
+int populate_selected_items (const char *filename)
+{
+  ifstream file(filename);
+  if(file.is_open())
+  {
+    string inputLine;
+
+    while (getline(file, inputLine) )                 //while the end of file is NOT reached
+    {
+      int res = get_classindex(inputLine);
+      std::cout << "Searching for " << inputLine  << std::endl;
+      if(res >= 0) {
+        std::cout << "Found: " << res << std::endl;
+      } else {
+        std::cout << "Not Found: " << res << std::endl;
+      }
+    }
+    file.close();
+  }
+#if 0
+  std::cout << "==Total of " << selected_items_size << " items!" << std::endl;
+  for (int i = 0; i < selected_items_size; i ++)
+    std::cout << i << ") " << selected_items[i] << std::endl;
+#endif
+  return selected_items_size;
+}
+
+void populate_labels (const char *filename)
+{
+  ifstream file(filename);
+  if(file.is_open())
+  {
+    string inputLine;
+
+    while (getline(file, inputLine) )                 //while the end of file is NOT reached
+    {
+      labels_classes[IMAGE_CLASSES_NUM ++] = string(inputLine);
+    }
+    file.close();
+  }
+#if 1
+  std::cout << "==Total of " << IMAGE_CLASSES_NUM << " items!" << std::endl;
+  for (int i = 0; i < IMAGE_CLASSES_NUM; i ++)
+    std::cout << i << ") " << labels_classes[i] << std::endl;
+#endif
+}
+
 int main(int argc, char *argv[])
 {
     // Catch ctrl-c to ensure a clean exit
     signal(SIGABRT, exit);
     signal(SIGTERM, exit);
-
+    setup_rect_crop();
 
     // If there are no devices capable of offloading TIDL on the SoC, exit
     uint32_t num_eves = Executor::GetNumDevices(DeviceType::EVE);
@@ -151,7 +273,7 @@ int main(int argc, char *argv[])
       if (!opts.output_prob_threshold) opts.output_prob_threshold =
         SSD_DEFAULT_OUTPUT_PROB_THRESHOLD;
     }
-    else {
+    else if (opts.net_type == "seg") {
       if (opts.config == "") opts.config = SEG_DEFAULT_CONFIG;
       if (opts.object_classes_list_file == "") opts.object_classes_list_file =
         SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE;
@@ -169,13 +291,19 @@ int main(int argc, char *argv[])
                            SEG_DEFAULT_INPUT_FRAMES : 1);
     cout << "Input: " << opts.input_file << endl;
 
-    // Get object classes list
-    object_classes = std::unique_ptr<ObjectClasses>(
-                             new ObjectClasses(opts.object_classes_list_file));
-    if (object_classes->GetNumClasses() == 0)
-    {
-        cout << "No object classes defined for this config." << endl;
-        return EXIT_FAILURE;
+    if (opts.net_type == "seg" || opts.net_type == "ssd") {
+            // Get object classes list
+      object_classes = std::unique_ptr<ObjectClasses>(
+                               new ObjectClasses(opts.object_classes_list_file));
+      if (object_classes->GetNumClasses() == 0)
+      {
+          cout << "No object classes defined for this config." << endl;
+          return EXIT_FAILURE;
+      }
+    }
+    else {
+      populate_labels(opts.object_classes_list_file.c_str());
+      populate_selected_items(opts.object_classes_list_file.c_str());
     }
 
     // Run network
@@ -195,8 +323,15 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     // int prob_slider     = opts.output_prob_threshold;
     // Read the TI DL configuration file
     Configuration c;
-    std::string config_file = "../test/testvecs/config/infer/tidl_config_"
-                              + opts.config + ".txt";
+    std::string config_file;
+    // TODO : clean up
+    if (opts.net_type == "class")
+      config_file = opts.config;
+    else {
+      config_file = "../test/testvecs/config/infer/tidl_config_"
+                                + opts.config + ".txt";
+    }
+
     bool status = c.ReadFromFile(config_file);
     if (!status)
     {
@@ -212,23 +347,32 @@ bool RunConfiguration(const cmdline_opts_t& opts)
      */
     CamDisp cam;
     int cap_w, cap_h, alpha_value;
+
+    // optsarg is const, quick_display should be set to false if it was
+    // triggered by the user when not using the segmentation demo.
     bool quick_display = opts.quick_display;
     if (opts.net_type == "seg") {
       cap_w = 1280;
       cap_h = 720;
       alpha_value = 150;
     }
-    else {
+    else if (opts.net_type == "ssd") {
       cap_w = 800;
       cap_h = 600;
       alpha_value = 255;
       quick_display = false;
     }
+    else if (opts.net_type == "class") {
+      cap_w = 640;
+      cap_h = 480;
+      alpha_value = 255;
+      quick_display = false;
+    }
 
-    // the quick display setting looks better with a darker second layer
+    // The quick display setting looks better with a darker second layer
     if (quick_display) alpha_value = 215;
 
-    if (atoi(opts.input_file.c_str()) && (isdigit(atoi(opts.input_file.c_str())))) {
+    if ((opts.input_file != "") && (isdigit(atoi(opts.input_file.c_str())))) {
       string device_name = "/dev/video" + opts.input_file;
       cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
         device_name, true, opts.net_type, quick_display);
@@ -237,8 +381,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
       cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
         "/dev/video1", true, opts.net_type, quick_display);
     }
-    if (!cam.init_capture_pipeline(opts.net_type))
-      return false;
+    cam.init_capture_pipeline();
 
     try
     {
@@ -248,7 +391,7 @@ bool RunConfiguration(const cmdline_opts_t& opts)
         // DSP will run layersGroupId 2 in the network
         Executor *e_dsp, *e_eve;
         MSG("Beginning to create executors for net_type %s", opts.net_type.c_str());
-        if (opts.net_type == "ssd") {
+        if (opts.net_type == "ssd" || opts.net_type == "class") {
           e_dsp = CreateExecutor(DeviceType::DSP, opts.num_dsps, c, 2);
           e_eve = CreateExecutor(DeviceType::EVE, opts.num_eves, c, 1);
         }
@@ -389,6 +532,9 @@ bool RunConfiguration(const cmdline_opts_t& opts)
                 WriteFrameOutputSSD(*eop, c, opts, cam);
               else if ((opts.net_type == "seg") && (!quick_display)) {
                 WriteFrameOutputSEG(*eop, c, opts, cam);
+              }
+              else if (opts.net_type == "class") {
+                DisplayFrame(eop, cam, c, frame_idx, num_eops, opts.num_eves, opts.num_dsps);
               }
 
               cam.disp_frame();
@@ -660,6 +806,131 @@ bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
         }
     }
     return true;
+}
+
+void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cam,
+                  const Configuration& c, uint32_t frame_idx, uint32_t num_eops,
+                  uint32_t num_eves, uint32_t num_dsps)
+{
+  int width  = c.inWidth;
+  int height = c.inHeight;
+
+  /* omap_bo_map is grabbing the pointer to the memory allocated by plane #2
+   * of the DSS. It then writes over that plane as it waits to be displayed.
+   */
+  /* clear the classes */
+  memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0], 0, height*width*4);
+
+  /* Data is being read in as bgra - thus the user may control the alpha
+   * values either from this write function or by passing in the alpha value
+   * to the initializer of the CamDisp object. Value go from 0 (totally clear)
+   * to 255 (opaque)
+   */
+  Mat frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0]);
+
+  int f_id = eop->GetFrameIndex();
+  int curr_roi = f_id % NUM_ROI;
+  int is_object = tf_postprocess((uchar*) eop->GetOutputBufferPtr(),
+                                 eop->GetOutputBufferSizeInBytes(),
+                               IMAGE_CLASSES_NUM, curr_roi, frame_idx, f_id);
+  int alpha = 255;
+
+  selclass_history[curr_roi][2] = selclass_history[curr_roi][1];
+  selclass_history[curr_roi][1] = selclass_history[curr_roi][0];
+  selclass_history[curr_roi][0] = is_object;
+  for (int r = 0; r < NUM_ROI; r++)
+  {
+    int rpt_id =  ShowRegion(selclass_history[r]);
+    if(rpt_id >= 0)
+    {
+      int thickness = 1;
+      double scale = 0.6;
+      int baseline = 0;
+
+      Size text_size = getTextSize(labels_classes[rpt_id], FONT_HERSHEY_DUPLEX, scale,
+                                  thickness, &baseline);
+      baseline += thickness;
+      // place the name of the class at the botton of the box
+      cv::rectangle(frame, Point(20,20) + Point(0, baseline),
+             Point(20,20) + Point(text_size.width, -text_size.height),
+             Scalar(0,0,0,alpha), -1);
+      cv::putText(frame, labels_classes[rpt_id], Point(20,20),
+                  FONT_HERSHEY_DUPLEX, scale, Scalar(255,255,255,alpha),
+                  thickness);
+    }
+  }
+}
+
+int ShowRegion(int roi_history[])
+{
+  if((roi_history[0] >= 0) && (roi_history[0] == roi_history[1])) return roi_history[0];
+  if((roi_history[0] >= 0) && (roi_history[0] == roi_history[2])) return roi_history[0];
+  if((roi_history[1] >= 0) && (roi_history[1] == roi_history[2])) return roi_history[1];
+  return -1;
+}
+
+// Function to filter all the reported decisions
+bool tf_expected_id(int id)
+{
+   // Filter out unexpected IDs
+   for (int i = 0; i < selected_items_size; i ++)
+   {
+       if(id == selected_items[i]) return true;
+   }
+   return false;
+}
+//Temporal averaging
+int TOP_CANDIDATES = 3;
+int tf_postprocess(uchar *in, int out_size, int size, int roi_idx,
+                   int frame_idx, int f_id)
+{
+  //prob_i = exp(TIDL_Lib_output_i) / sum(exp(TIDL_Lib_output))
+  // sort and get k largest values and corresponding indices
+  const int k = TOP_CANDIDATES;
+  int rpt_id = -1;
+  // Tensorflow trained network outputs 1001 probabilities,
+  // with 0-index being background, thus we need to subtract 1 when
+  // reporting classified object from 1000 categories
+  int background_offset = out_size == 1001 ? 1 : 0;
+
+  typedef std::pair<uchar, int> val_index;
+  auto cmp = [](val_index &left, val_index &right) { return left.first > right.first; };
+  std::priority_queue<val_index, std::vector<val_index>, decltype(cmp)> queue(cmp);
+  // initialize priority queue with smallest value on top
+  for (int i = 0; i < k; i++) {
+    queue.push(val_index(in[i], i));
+  }
+  // for rest input, if larger than current minimum, pop mininum, push new val
+  for (int i = k; i < size; i++)
+  {
+    if (in[i] > queue.top().first)
+    {
+      queue.pop();
+      queue.push(val_index(in[i], i));
+    }
+  }
+
+  // output top k values in reverse order: largest val first
+  std::vector<val_index> sorted;
+  while (! queue.empty())
+  {
+    sorted.push_back(queue.top());
+    queue.pop();
+  }
+
+  for (int i = 0; i < k; i++)
+  {
+      int id = sorted[i].second - background_offset;
+
+      if (tf_expected_id(id))
+      {
+        std::cout << "Frame:" << frame_idx << "," << f_id << " ROI[" << roi_idx << "]: rank="
+                  << k-i << ", outval=" << (float)sorted[i].first / 255 << ", "
+                  << labels_classes[id] << std::endl;
+        rpt_id = id;
+      }
+  }
+  return rpt_id;
 }
 
 
