@@ -111,8 +111,6 @@ bool VPEObj::vpe_input_init()
   selection.target = V4L2_SEL_TGT_CROP_ACTIVE;
   selection.type = src.type;
 
-
-
   ret = ioctl(m_fd, VIDIOC_S_SELECTION, &selection);
   if (ret < 0) {
     ERROR( "%s: vpe i/p: S_SELECTION failed: %s\n", m_dev_name.c_str(), strerror(errno));
@@ -176,8 +174,6 @@ bool VPEObj::vpe_input_init()
         m_dev_name.c_str(), src.fmt.fmt.pix.width, src.fmt.fmt.pix.height,
         (char*)&src.fmt.fmt.pix.pixelformat);
   }
-
-//	set_crop(vpe);
 
 	memset(&rqbufs, 0, sizeof(rqbufs));
 	rqbufs.count = NBUF;
