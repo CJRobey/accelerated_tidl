@@ -1,0 +1,13 @@
+{
+  "network": "toydogsnet",
+  "objects": [
+    { "label": "shar_pei", "color_bgr": [ 127, 127, 127 ] },
+    { "label": "golden_retriever",       "color_bgr": [   0, 255,   0 ] },
+    { "label": "afghan_hound", "color_bgr": [   0,   0, 255 ] },
+    { "label": "german_shepherd",  "color_bgr": [   0, 255, 255 ] },
+    { "label": "labrador_retriever",    "color_bgr": [ 255,   0,   0 ] },
+    { "label": "pomeranian",  "color_bgr": [   255, 0, 255 ] },
+    { "label": "rottweiler",  "color_bgr": [   127, 0, 255 ] },
+    { "label": "chow",  "color_bgr": [   0, 127, 255 ] }
+  ]
+}
