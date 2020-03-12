@@ -41,12 +41,13 @@ CamDisp::CamDisp() {
 
 
 CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
-  string dev_name, bool usb, std::string net_type, bool _quick_display) {
+  string dev_name, bool usb, std::string _net_type, bool _quick_display) {
   src_w = _src_w;
   src_h = _src_h;
   dst_w = _dst_w;
   dst_h = _dst_h;
   alpha = _alpha;
+  net_type = _net_type;
   drm_device.quick_display = _quick_display;
   frame_num = 0;
 
@@ -68,10 +69,14 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
     V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, V4L2_PIX_FMT_BGR32,
     V4L2_MEMORY_DMABUF, 3);
 
+  // if(!init_capture_pipeline()) {
+  //   ERROR("Initializing capture pipeline failed");
+  //   sleep(2);
+  // }
 }
 
 
-bool CamDisp::init_capture_pipeline(string net_type) {
+bool CamDisp::init_capture_pipeline() {
 
   /* set num_planes to 1 for no output layer and num_planes to 2 for the output
    * layer to be shown
@@ -163,8 +168,6 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   DBG("Output layer initialization done\n");
 
   for (int i=0; i < vip.src.num_buffers; i++) {
-    // for (int p=0;p<vip.src.num_buffers; p++)
-    //   DBG("bo_vpe_in[%d]: %d", p, bo_vpe_in[p]->fd[0]);
     if (!vip.queue_buf(bo_vpe_in[i]->fd[0], i)) {
       ERROR("initial queue VIP buffer #%d failed", i);
       return false;
@@ -178,7 +181,6 @@ bool CamDisp::init_capture_pipeline(string net_type) {
       return false;
     }
   }
-
   DBG("VPE initial output buffer queues done\n");
 
   vpe.m_field = V4L2_FIELD_ANY;
@@ -209,7 +211,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
         return false;
       }
     }
-    else if (net_type == "ssd") {
+    else if (net_type == "ssd" || net_type == "class") {
       if (drm_device.get_vid_buffers(3, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
         DBG("\nBounding Box overlay plane successfully allocated");
         for (int b=0; b<3; b++) {
@@ -231,7 +233,7 @@ bool CamDisp::init_capture_pipeline(string net_type) {
   if (!vpe.stream_on(1)) return false;
 
   // plane 0 and 1 should have the same parameters in this case
-  drm_device.drm_init_dss(&vpe.dst, &vpe.dst, alpha);
+  drm_device.drm_init_dss(&vpe.dst, &vpe.dst, alpha, net_type);
 
   return true;
 }
