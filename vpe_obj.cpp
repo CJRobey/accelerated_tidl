@@ -98,31 +98,34 @@ bool VPEObj::vpe_input_init()
 {
 	int ret;
 	struct v4l2_requestbuffers rqbufs;
-  struct v4l2_crop crop_fmt;
+  struct v4l2_selection selection;
 
 
 	if (!set_ctrl()) return false;
 
 
-  crop_fmt.type = src.type;
-  crop_fmt.c.left = 0;
-  crop_fmt.c.top = 0;
-  crop_fmt.c.width = dst.width;
-  crop_fmt.c.height = dst.height;
+  selection.r.left = 0;
+  selection.r.top = 0;
+  selection.r.width = dst.width;
+  selection.r.height = dst.height;
+  selection.target = V4L2_SEL_TGT_CROP_ACTIVE;
+  selection.type = src.type;
 
-  ret = ioctl(m_fd, VIDIOC_S_CROP, &crop_fmt);
+
+
+  ret = ioctl(m_fd, VIDIOC_S_SELECTION, &selection);
   if (ret < 0) {
-    ERROR( "%s: vpe i/p: S_CROP failed: %s\n", m_dev_name.c_str(), strerror(errno));
+    ERROR( "%s: vpe i/p: S_SELECTION failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
-  ret = ioctl(m_fd, VIDIOC_G_CROP, &crop_fmt);
+  ret = ioctl(m_fd, VIDIOC_G_SELECTION, &selection);
   if (ret < 0) {
-    ERROR( "%s: vpe i/p: G_CROP failed: %s\n", m_dev_name.c_str(), strerror(errno));
+    ERROR( "%s: vpe i/p: G_SELECTION failed: %s\n", m_dev_name.c_str(), strerror(errno));
     return false;
   }
 
   DBG("Cropping params of VPE set to\nw: %d\nh: %d\norigin: (%d,%d)",
-    crop_fmt.c.width, crop_fmt.c.height, crop_fmt.c.left, crop_fmt.c.top);
+    selection.r.width, selection.r.height, selection.r.left, selection.r.top);
 
 
   MSG("\n%s: Opened Channel\n", m_dev_name.c_str());
