@@ -98,8 +98,32 @@ bool VPEObj::vpe_input_init()
 {
 	int ret;
 	struct v4l2_requestbuffers rqbufs;
+  struct v4l2_crop crop_fmt;
+
 
 	if (!set_ctrl()) return false;
+
+
+  crop_fmt.type = src.type;
+  crop_fmt.c.left = 0;
+  crop_fmt.c.top = 0;
+  crop_fmt.c.width = dst.width;
+  crop_fmt.c.height = dst.height;
+
+  ret = ioctl(m_fd, VIDIOC_S_CROP, &crop_fmt);
+  if (ret < 0) {
+    ERROR( "%s: vpe i/p: S_CROP failed: %s\n", m_dev_name.c_str(), strerror(errno));
+    return false;
+  }
+  ret = ioctl(m_fd, VIDIOC_G_CROP, &crop_fmt);
+  if (ret < 0) {
+    ERROR( "%s: vpe i/p: G_CROP failed: %s\n", m_dev_name.c_str(), strerror(errno));
+    return false;
+  }
+
+  DBG("Cropping params of VPE set to\nw: %d\nh: %d\norigin: (%d,%d)",
+    crop_fmt.c.width, crop_fmt.c.height, crop_fmt.c.left, crop_fmt.c.top);
+
 
   MSG("\n%s: Opened Channel\n", m_dev_name.c_str());
   if (src.type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
