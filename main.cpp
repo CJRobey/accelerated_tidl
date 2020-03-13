@@ -129,14 +129,15 @@ bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
               CamDisp &cap);
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam);
+                      const CamDisp& cam, float fps);
 // Create frame overlayed with pixel-level segmentation
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
-                      const cmdline_opts_t& opts, const CamDisp& cam);
-void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cap,
-                  const Configuration& c, uint32_t frame_idx, uint32_t num_eops,
+                      const cmdline_opts_t& opts, const CamDisp& cam, float fps);
+void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cap,
+                  const Configuration& c, uint32_t frame_idx, float fps, uint32_t num_eops,
                   uint32_t num_eves, uint32_t num_dsps);
+void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale);
 
 static void DisplayHelp();
 void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
@@ -522,20 +523,35 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
         // Process frames with available eops in a pipelined manner
         // additional num_eops iterations to flush pipeline (epilogue)
+        high_resolution_clock::time_point wrStart;
+        // going to keep a running average of the FPS
+        int ave = 20;
+        float fps_bank[ave];
+        float fps = 0;
         for (uint32_t frame_idx = 0;
              frame_idx < (int) opts.num_frames + num_eops; frame_idx++)
         {
             ExecutionObjectPipeline* eop = eops[frame_idx % num_eops];
             // Wait for previous frame on the same eop to finish processing
             if (eop->ProcessFrameWait()) {
-              auto wrStart = high_resolution_clock::now();
+              auto fpsCount = duration_cast<milliseconds>(high_resolution_clock::now() - wrStart);
+              fps_bank[(frame_idx-num_eops)%ave] = (1000.00/(float)fpsCount.count());
+
+              // Take the average fps
+              if ((frame_idx-num_eops) >= (unsigned int) ave) {
+                fps = 0;
+                for (int f=0; f<ave; f++)
+                  fps += fps_bank[f]/ave;
+              }
+
+              wrStart = high_resolution_clock::now();
               if (opts.net_type == "ssd")
-                WriteFrameOutputSSD(*eop, c, opts, cam);
+                WriteFrameOutputSSD(*eop, c, opts, cam, fps);
               else if ((opts.net_type == "seg") && (!quick_display)) {
-                WriteFrameOutputSEG(*eop, c, opts, cam);
+                WriteFrameOutputSEG(*eop, c, opts, cam, fps);
               }
               else if (opts.net_type == "class") {
-                DisplayFrame(eop, cam, c, frame_idx, num_eops, opts.num_eves, opts.num_dsps);
+                WriteFrameOutputCLASS(eop, cam, c, frame_idx, fps, num_eops, opts.num_eves, opts.num_dsps);
               }
 
               cam.disp_frame();
@@ -679,7 +695,7 @@ bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
  */
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam)
+                      const CamDisp& cam, float fps)
 {
     // Asseemble original frame
     int width  = c.inWidth;
@@ -758,6 +774,7 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
         MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(), object_class.color.blue,
             object_class.color.green, object_class.color.red);
     }
+    OverlayFPS(frame, c, fps, 1);
 
     return true;
 }
@@ -779,7 +796,7 @@ void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
 // Create frame overlayed with pixel-level segmentation
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
-                      const cmdline_opts_t& opts, const CamDisp& cap)
+                      const cmdline_opts_t& opts, const CamDisp& cap, float fps)
 {
     unsigned char *out = (unsigned char *) eop.GetOutputBufferPtr();
     int width          = c.inWidth;
@@ -810,11 +827,13 @@ bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
           disp_data[i] = 0x0000;
         }
     }
+    Mat frame(c.inHeight, c.inWidth, CV_16UC1, disp_data);
+    OverlayFPS(frame, c, fps, 1);
     return true;
 }
 
-void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cam,
-                  const Configuration& c, uint32_t frame_idx, uint32_t num_eops,
+void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cam,
+                  const Configuration& c, uint32_t frame_idx, float fps, uint32_t num_eops,
                   uint32_t num_eves, uint32_t num_dsps)
 {
   int width  = c.inWidth;
@@ -839,6 +858,7 @@ void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cam,
                                  eop->GetOutputBufferSizeInBytes(),
                                IMAGE_CLASSES_NUM, curr_roi, frame_idx, f_id);
   int alpha = 255;
+  double scale = 0.6;
 
   selclass_history[curr_roi][2] = selclass_history[curr_roi][1];
   selclass_history[curr_roi][1] = selclass_history[curr_roi][0];
@@ -849,21 +869,21 @@ void DisplayFrame(const ExecutionObjectPipeline* eop, CamDisp &cam,
     if(rpt_id >= 0)
     {
       int thickness = 1;
-      double scale = 0.6;
       int baseline = 0;
 
-      Size text_size = getTextSize(labels_classes[rpt_id], FONT_HERSHEY_DUPLEX, scale,
-                                  thickness, &baseline);
+      Size text_size = getTextSize(labels_classes[rpt_id], FONT_HERSHEY_DUPLEX,
+        scale, thickness, &baseline);
       baseline += thickness;
       // place the name of the class at the botton of the box
-      cv::rectangle(frame, Point(20,20) + Point(0, baseline),
-             Point(20,20) + Point(text_size.width, -text_size.height),
+      cv::rectangle(frame, Point(0,c.inHeight),
+             Point(text_size.width, c.inHeight-text_size.height-baseline),
              Scalar(0,0,0,alpha), -1);
-      cv::putText(frame, labels_classes[rpt_id], Point(20,20),
+      cv::putText(frame, labels_classes[rpt_id], Point(0,c.inHeight-baseline),
                   FONT_HERSHEY_DUPLEX, scale, Scalar(255,255,255,alpha),
                   thickness);
     }
   }
+  OverlayFPS(frame, c, fps, 0.45);
 }
 
 int ShowRegion(int roi_history[])
@@ -936,6 +956,31 @@ int tf_postprocess(uchar *in, int out_size, int size, int roi_idx,
       }
   }
   return rpt_id;
+}
+
+
+void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale) {
+
+  // write the data in the bottom right corner of the screen
+  int thickness = 1;
+  int baseline = 0;
+
+  char fps_string[20];
+  sprintf(fps_string, "FPS: %.2f", fps);
+  Size text_size = getTextSize(fps_string, FONT_HERSHEY_DUPLEX, scale,
+                              thickness, &baseline);
+  baseline += thickness;
+  // place the name of the class at the botton of the box
+  if (fps_screen.channels() == 4) {
+    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
+      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
+      Scalar(255,255,255,255), thickness);
+  }
+  else {
+    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
+      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
+      0xF000, thickness);
+  }
 }
 
 

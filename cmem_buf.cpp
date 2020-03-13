@@ -4,6 +4,7 @@
 #include <ti/cmem.h>
 #include <linux/dma-buf.h>
 #include <sys/ioctl.h>
+#include "error.h"
 
 #define CMEM_BLOCKID CMEM_CMABLOCKID
 
