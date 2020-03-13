@@ -5,6 +5,7 @@
 * Integrate a text plane for classification
 * ~~Integrate a semantic segmentation example (should be pretty easy with current configuration)~~
 * Grep whole project for "TODO" before finishing
+* ~~Move buffer system to CMEM~~
 
 ### Stretch
 * ~~EXPBUF MMAP allocation on the capture side to VPE (not sure if this actually works). This would remove the need to memcpy USB capture data to the VPE and would keep V4L2 calls consistent between the usage of VIP and USB.~~ This doesn't actually work... trying with the EXPBUF from VPE.
