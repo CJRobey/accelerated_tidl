@@ -1,32 +1,4 @@
-# include ../make.common
-#
-# CROSS_COMPILE ?=
-#
-# ALL_DEBUG := -g3 -gdwarf-2 -Wall
-# ALL_RELEASE := -O2 -fomit-frame-pointer -Wall
-# INCLUDES := -I$(SDK_PATH_TARGET)/usr/include/omap -I$(SDK_PATH_TARGET)/usr/include/libdrm
-# #DEFS := -DLIBYUV_NEON
-#
-# LIBS 		+= -ldrm -ldrm_omap -lpthread -lticmem
-# LIBS     += -lopencv_highgui -lopencv_imgcodecs -lopencv_videoio\
-# 			-lopencv_imgproc -lopencv_core
-# LIBS     += -ljson-c
-#
-# SOURCES = main.cpp ../common/object_classes.cpp ../common/utils.cpp \
-# 	../common/video_utils.cpp #vip_obj.cpp vpe_obj.cpp cmem_buf.cpp save_utils.cpp
-#
-#
-# ALL_CFLAGS := $(ALL_RELEASE) $(DEFS) $(INCLUDES) $(CFLAGS)
-# ALL_CXXFLAGS := $(ALL_RELEASE) $(DEFS) $(INCLUDES) $(CFLAGS)
-# LDFLAGS :=
-#
-# all: vpe_ssd_multibox
-#
-# vpe_ssd_multibox: $(TIDL_API_LIB) $(HEADERS) $(SOURCES)
-# 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) $(LIBS) -o $@
-
-
-# Copyright (c) 2018 Texas Instruments Incorporated - http://www.ti.com/
+# Copyright (c) 2020 Texas Instruments Incorporated - http://www.ti.com/
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
