@@ -21,6 +21,7 @@ extern "C" {
 #include "error.h"
 #include "disp_obj.h"
 #include "save_utils.h"
+#include "cmem_buf.h"
 
 /* align x to next highest multiple of 2^n */
 #define ALIGN2(x,n)   (((x) + ((1 << (n)) - 1)) & ~((1 << (n)) - 1))
@@ -73,19 +74,38 @@ DmaBuffer *DRMDeviceInfo::alloc_buffer(unsigned int fourcc, unsigned int w,
 	buf->height = h;
 	buf->pitches[0] = w*bytes_pp;
 
-	MSG("\nAllocating memory from OMAP DRM pool\n");
-
-	//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
-	//and drmPrimeHandleToFD() to get the buffer descriptors
   buf->bo = (struct omap_bo **) calloc(4, sizeof(omap_bo *));
-	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
-	if (buf->bo[0]){
-		bo_handles[0] = omap_bo_handle(buf->bo[0]);
-	}
-	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
+
+  if (use_cmem) {
+
+    MSG("\nAllocating memory from CMEM pool\n");
+    buf->buf_mem_addr = (void **) calloc(4, sizeof(unsigned int));
+    buf->fd[0] = alloc_cmem_buffer(w*h*bytes_pp, 1, &buf->buf_mem_addr[0]);
+    if(buf->fd[0] < 0){
+			free_cmem_buffer(buf->buf_mem_addr[0]);
+			printf(" Cannot export CMEM buffer\n");
+			return NULL;
+		}
+
+    /* Get the omap bo from the fd allocted using CMEM */
+    buf->bo[0] = omap_bo_from_dmabuf(dev, buf->fd[0]);
+    if (buf->bo[0]){
+      bo_handles[0] = omap_bo_handle(buf->bo[0]);
+    }
+  }
+  else {
+  	MSG("\nAllocating memory from OMAP DRM pool\n");
+
+  	//You can use DRM ioctl as well to allocate buffers (DRM_IOCTL_MODE_CREATE_DUMB)
+  	//and drmPrimeHandleToFD() to get the buffer descriptors
+  	buf->bo[0] = omap_bo_new(dev,w*h*bytes_pp, bo_flags | OMAP_BO_WC);
+  	if (buf->bo[0]){
+  		bo_handles[0] = omap_bo_handle(buf->bo[0]);
+  	}
+  	buf->fd[0] = omap_bo_dmabuf(buf->bo[0]);
+  }
   print_omap_bo(buf->bo[0]);
 
-  //print_omap_bo((buf->bo[0]));
 	ret = drmModeAddFB2(fd, buf->width, buf->height, fourcc,
 		bo_handles, buf->pitches, offsets, &buf->fb_id, 0);
 
@@ -118,15 +138,23 @@ bool DRMDeviceInfo::export_buffer(DmaBuffer **db, int num_bufs, int bytes_pp,
       unsigned int bo_handles[4] = {0}, offsets[4] = {0};
       int ret;
     	db[i]->pitches[0] = db[i]->width*bytes_pp;
+      if (use_cmem) {
 
-    	if (db[i]->bo[0]){
-    		bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
-    	}
-      else {
-        ERROR("Passed unallocated buffers to export_buffer function");
-        return false;
+        /* Get the omap bo from the fd allocted using CMEM */
+        db[i]->bo[0] = omap_bo_from_dmabuf(dev, db[i]->fd[0]);
+        if (db[i]->bo[0]) {
+          bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
+        }
       }
-
+      else {
+      	if (db[i]->bo[0]){
+      		bo_handles[0] = omap_bo_handle(db[i]->bo[0]);
+      	}
+        else {
+          ERROR("Passed unallocated buffers to export_buffer function");
+          return false;
+        }
+      }
     	ret = drmModeAddFB2(fd, db[i]->width, db[i]->height, db[i]->fourcc,
     		bo_handles, db[i]->pitches, offsets, &db[i]->fb_id, 0);
 

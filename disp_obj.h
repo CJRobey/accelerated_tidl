@@ -75,7 +75,7 @@ public:
 	int fd = 0;
 	int width;
 	int height;
-	bool use_cmem = false;
+	bool use_cmem = true;
 	char dev_name[9];
 	char name[4];
 	unsigned int bo_flags;

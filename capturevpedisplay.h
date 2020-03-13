@@ -49,7 +49,7 @@ public:
   int dst_h;
   int alpha;
   std::string net_type;
-  bool usb = true;
+  bool use_cmem = true;
   bool stop_after_one = false;
 
   CamDisp();
