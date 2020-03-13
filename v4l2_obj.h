@@ -2,8 +2,6 @@
 #include <string>
 #include "save_utils.h"
 
-#define NBUF (3)
-
 #define CAP_WIDTH 800
 #define CAP_HEIGHT 600
 
@@ -73,7 +71,7 @@ public:
   ImageParams src;
 
   VIPObj();
-  VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type, int memory);
+  VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf, int type);
   ~VIPObj();
   int set_format();
   void device_init();

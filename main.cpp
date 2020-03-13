@@ -352,13 +352,13 @@ bool RunConfiguration(const cmdline_opts_t& opts)
     // triggered by the user when not using the segmentation demo.
     bool quick_display = opts.quick_display;
     if (opts.net_type == "seg") {
-      cap_w = 1280;
-      cap_h = 720;
+      cap_w = 1024;
+      cap_h = 576;
       alpha_value = 150;
     }
     else if (opts.net_type == "ssd") {
       cap_w = 800;
-      cap_h = 600;
+      cap_h = 448;
       alpha_value = 255;
       quick_display = false;
     }
@@ -371,15 +371,16 @@ bool RunConfiguration(const cmdline_opts_t& opts)
 
     // The quick display setting looks better with a darker second layer
     if (quick_display) alpha_value = 215;
+    bool usb_capture = true;
 
-    if ((opts.input_file != "") && (isdigit(atoi(opts.input_file.c_str())))) {
+    if ((opts.input_file != "") && opts.input_file.length() == 1) {
       string device_name = "/dev/video" + opts.input_file;
       cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
-        device_name, true, opts.net_type, quick_display);
+        device_name, usb_capture, opts.net_type, quick_display);
     }
     else {
       cam = CamDisp(cap_w, cap_h, c.inWidth, c.inHeight, alpha_value,
-        "/dev/video1", true, opts.net_type, quick_display);
+        "/dev/video1", usb_capture, opts.net_type, quick_display);
     }
     cam.init_capture_pipeline();
 
@@ -553,10 +554,10 @@ bool RunConfiguration(const cmdline_opts_t& opts)
            else {
               ReadFrameIO(*eop, frame_idx, c, opts, cam);
            }
-            auto rdStop = high_resolution_clock::now();
-            auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
-            cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
-            eop->ProcessFrameStartAsync();
+          auto rdStop = high_resolution_clock::now();
+          auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
+          cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
+          eop->ProcessFrameStartAsync();
         }
         cam.turn_off();
         tloop1 = chrono::steady_clock::now();
@@ -627,10 +628,14 @@ bool ReadFrameInput(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     Mat channels[4];
     split(pic, channels);
     char*  frame_buffer = eop.GetInputBufferPtr();
+
+    auto cpyStart = high_resolution_clock::now();
     memcpy(frame_buffer, channels[0].ptr(), channel_size);
     memcpy(frame_buffer+channel_size, channels[1].ptr(), channel_size);
     memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
-
+    auto cpyStop = high_resolution_clock::now();
+    auto cpyDuration = duration_cast<milliseconds>(cpyStop - cpyStart);
+    DBG("VPE -> TIDL memcpy time: %d ms", (int) cpyDuration.count());
     assert (frame_buffer != nullptr);
     return true;
 }

@@ -25,7 +25,7 @@ void VIPObj::default_parameters(void) {
     /* Main camera */
     m_dev_name = "/dev/video1";
 
-    src.num_buffers = NBUF;
+    src.num_buffers = 3;
     src.fourcc = V4L2_PIX_FMT_YUYV;
     src.colorspace = V4L2_COLORSPACE_SMPTE170M;
     src.width = CAP_WIDTH;
@@ -61,6 +61,16 @@ void VIPObj::device_init(){
     if (ioctl(m_fd, VIDIOC_QUERYCAP, &capability) < 0) {
         perror("VIDIOC_QUERYCAP");
         goto ERR;
+    }
+
+    DBG("%s: driver name is %s", m_dev_name.c_str(), (const char *) capability.driver);
+    if (!strcmp((const char *) capability.driver, "vip")) {
+      src.memory = V4L2_MEMORY_DMABUF;
+      src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
+    }
+    else { // ususally this case will be capability.driver == "uvcvideo"
+      src.memory = V4L2_MEMORY_MMAP;
+      src.fmt.fmt.pix.field = V4L2_FIELD_NONE;
     }
 
     if (capability.capabilities & V4L2_CAP_STREAMING)
@@ -112,7 +122,7 @@ VIPObj::VIPObj(){
 }
 
 VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
-  int type, int memory){
+  int type){
     default_parameters();
     m_dev_name = dev_name;
     src.width = w;
@@ -127,11 +137,7 @@ VIPObj::VIPObj(std::string dev_name, int w, int h, int pix_fmt, int num_buf,
       src.bytes_pp = 4;
     }
     src.size = w*h*src.bytes_pp;
-    src.memory = memory;
-    if (src.memory == V4L2_MEMORY_MMAP)
-      src.fmt.fmt.pix.field = V4L2_FIELD_NONE;
-    else
-      src.fmt.fmt.pix.field = V4L2_FIELD_ALTERNATE;
+
 }
 
 VIPObj::~VIPObj(){

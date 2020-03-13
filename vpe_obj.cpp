@@ -29,7 +29,7 @@ void VPEObj::default_parameters(void) {
     m_dev_name = "/dev/video0";
     m_deinterlace = 0;
     m_field = V4L2_FIELD_ANY;
-    m_num_buffers = NBUF;
+    m_num_buffers = 3;
 
     src.fourcc = V4L2_PIX_FMT_YUYV;
     src.width = CAP_WIDTH;
@@ -176,7 +176,7 @@ bool VPEObj::vpe_input_init()
   }
 
 	memset(&rqbufs, 0, sizeof(rqbufs));
-	rqbufs.count = NBUF;
+	rqbufs.count = m_num_buffers;
 	rqbufs.type = src.type;
 	rqbufs.memory = src.memory;
 

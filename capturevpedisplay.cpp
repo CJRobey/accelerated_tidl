@@ -37,7 +37,6 @@ CamDisp::CamDisp() {
   dst_h = TIDL_MODEL_HEIGHT;
   alpha = 255;
   frame_num = 0;
-  usb = true;
 }
 
 
@@ -51,31 +50,23 @@ CamDisp::CamDisp(int _src_w, int _src_h, int _dst_w, int _dst_h, int _alpha,
   alpha = _alpha;
   net_type = _net_type;
 
+  // A boolean value, where in the case of a segmentation demo, the buffer
+  // between the overlay plane of the DSS (plane1) and the output of TIDL
+  // are shared
   drm_device.quick_display = _quick_display;
+
   frame_num = 0;
+  vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
+    V4L2_BUF_TYPE_VIDEO_CAPTURE);
 
-  if (usb) {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
-    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_MMAP);
-  }
-  else {
-    vip = VIPObj(dev_name, src_w, src_h, FOURCC_STR("YUYV"), 3,
-    V4L2_BUF_TYPE_VIDEO_CAPTURE, V4L2_MEMORY_DMABUF);
-  }
-
-  // these values should correspond to the FOUCC_STR values for the src and dst
-  // ImageParams' of the vpe
+  // these values (number of bytes per pixel) should correspond to the
+  // FOUCC_STR values for the src and dst ImageParams' of the vpe
   int vpe_src_bytes_pp = 2;
   int vpe_dst_bytes_pp = 4;
 
   vpe = VPEObj(src_w, src_h, vpe_src_bytes_pp, FOURCC_STR("YUYV"),
-    V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, V4L2_PIX_FMT_BGR32,
+    V4L2_MEMORY_DMABUF, dst_w, dst_h, vpe_dst_bytes_pp, FOURCC_STR("BGR4"),
     V4L2_MEMORY_DMABUF, 3);
-
-  // if(!init_capture_pipeline()) {
-  //   ERROR("Initializing capture pipeline failed");
-  //   sleep(2);
-  // }
 }
 
 
@@ -267,55 +258,79 @@ void CamDisp::disp_frame() {
 }
 
 void *CamDisp::grab_image() {
-    /* This step actually releases the frame back into the pipeline, but we
-     * don't want to do this until the user calls for another frame. Otherwise,
-     * the data pointed to by *imagedata could be corrupted.
-     */
-    if (stop_after_one) {
-      vpe.output_qbuf(frame_num, bo_vpe_out[frame_num]->fd[0]);
-      frame_num = vpe.input_dqbuf();
-      vip.queue_buf(bo_vpe_in[frame_num]->fd[0], frame_num);
-    }
+  /* This step actually releases the frame back into the pipeline, but we
+   * don't want to do this until the user calls for another frame. Otherwise,
+   * the data pointed to by *imagedata could be corrupted.
+   */
+  auto qdqStart = high_resolution_clock::now();
+  if (stop_after_one) {
+    vpe.output_qbuf(frame_num, bo_vpe_out[frame_num]->fd[0]);
+    frame_num = vpe.input_dqbuf();
+    vip.queue_buf(bo_vpe_in[frame_num]->fd[0], frame_num);
+  }
+  auto qdqStop = high_resolution_clock::now();
+  auto qdqDuration = duration_cast<milliseconds>(qdqStop - qdqStart);
+  DBG("VPE QUEUE/VPE DQ time: %d ms", (int) qdqDuration.count());
 
-    /* dequeue the vip */
-    frame_num = vip.dequeue_buf();
-    if (vip.src.memory == V4L2_MEMORY_MMAP) {
-      MSG("memcpy from address %p to address %p of size 0x%x",
-        vip.src.base_addr[frame_num], bo_vpe_in[frame_num]->buf_mem_addr[0],
-        vip.src.size);
-      memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0],
-        vip.src.base_addr[frame_num], vip.src.size);
-    }
+  /* dequeue the vip */
+  auto vipStart = high_resolution_clock::now();
+  frame_num = vip.dequeue_buf();
+  auto vipStop = high_resolution_clock::now();
+  auto vipDuration = duration_cast<milliseconds>(vipStop - vipStart);
+  DBG("USB QUEUE time: %d ms", (int) vipDuration.count());
+
+  // In other terms, "if the camera is a usb camera"
+  if (vip.src.memory == V4L2_MEMORY_MMAP) {
+    // if (use_cmem)
+    //   dma_buf_do_cache_operation(bo_vpe_in[frame_num]->fd[0], (DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ));
+    DBG("memcpy from address %p to address %p of size 0x%x",
+      vip.src.base_addr[frame_num], bo_vpe_in[frame_num]->buf_mem_addr[0],
+      vip.src.size);
+    auto cpyStart = high_resolution_clock::now();
+
+    memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0],
+      vip.src.base_addr[frame_num], vip.src.size);
+
+    // if (use_cmem)
+    //   dma_buf_do_cache_operation(bo_vpe_in[frame_num]->fd[0], (DMA_BUF_SYNC_WRITE | DMA_BUF_SYNC_READ));
+
+    auto cpyStop = high_resolution_clock::now();
+    auto cpyDuration = duration_cast<milliseconds>(cpyStop - cpyStart);
+    DBG("USB -> VPE memcpy time: %d ms", (int) cpyDuration.count());
+  }
 
 
-    /* queue that frame onto the vpe */
-    if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
-      ERROR("vpe input queue buffer failed");
-      return NULL;
-    }
+  /* queue that frame onto the vpe */
+  if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
+    ERROR("vpe input queue buffer failed");
+    return NULL;
+  }
 
-    /* If this is the first run, initialize deinterlacing (if being used) and
-     * start the vpe input streaming
-     */
-    if (!stop_after_one) {
-      init_vpe_stream();
-    }
+  /* If this is the first run, initialize deinterlacing (if being used) and
+   * start the vpe input streaming
+   */
+  if (!stop_after_one) {
+    init_vpe_stream();
+  }
 
-    /* Dequeue the frame of the ready data */
-    frame_num = vpe.output_dqbuf();
+  auto vpeStart = high_resolution_clock::now();
+  /* Dequeue the frame of the ready data */
+  frame_num = vpe.output_dqbuf();
+  auto vpeStop = high_resolution_clock::now();
+  auto vpeDuration = duration_cast<milliseconds>(vpeStop - vpeStart);
+  DBG("USB -> VPE vpe dequeue time: %d ms", (int) vpeDuration.count());
+  // if no display, then the api is not called
+  disp_frame_num = frame_num;
 
-    // if no display, then the api is not called
-    disp_frame_num = frame_num;
-
-    /**********DATA IS HERE!!************/
-    void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
-    DBG("Image data at %p of size 0x%x", imagedata, vpe.dst.size);
-    return imagedata;
+  /**********DATA IS HERE!!************/
+  void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
+  DBG("Image data at %p of size 0x%x", imagedata, vpe.dst.size);
+  return imagedata;
 }
 
 void CamDisp::init_vpe_stream() {
   int count = 1;
-  for (int i = 1; i <= NBUF; i++) {
+  for (int i = 1; i <= vpe.m_num_buffers; i++) {
     /* To star deinterlace, minimum 3 frames needed */
     if (vpe.m_deinterlace && count != 3) {
       frame_num = vip.dequeue_buf();
