@@ -26,10 +26,10 @@ int alloc_cmem_buffer(unsigned int size, unsigned int align, void **cmem_buf)
 		&cmem_alloc_params);
 
 	if(*cmem_buf == NULL){
-		printf("CMEM allocation failed");
+		DBG("CMEM allocation failed");
 		return -1;
 	}
-	printf("CMEM buffer pointer is 0x%x\n",(uint32_t) *cmem_buf );
+	DBG("CMEM buffer pointer is 0x%x\n",(uint32_t) *cmem_buf );
 	return CMEM_export_dmabuf(*cmem_buf);
 }
 
@@ -38,7 +38,7 @@ void free_cmem_buffer(void *cmem_buffer)
 	CMEM_free(cmem_buffer, &cmem_alloc_params);
 }
 
-int dma_buf_do_cache_operation(int dma_buf_fd, uint32_t cache_operation) 
+int dma_buf_do_cache_operation(int dma_buf_fd, uint32_t cache_operation)
 {
 	int ret;
 	struct dma_buf_sync sync;
@@ -48,4 +48,3 @@ int dma_buf_do_cache_operation(int dma_buf_fd, uint32_t cache_operation)
 
 	return ret;
 }
-

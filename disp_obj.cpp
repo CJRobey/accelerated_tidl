@@ -46,9 +46,8 @@ DRMDeviceInfo::DRMDeviceInfo() {
 
 
 DRMDeviceInfo::~DRMDeviceInfo() {
-  for (unsigned int i=0;i<num_planes;i++)
-    free_vid_buffers(i);
-  MSG("And so it ends...");
+  // for (unsigned int i=0;i<num_planes;i++)
+  //   free_vid_buffers(i);
 }
 
 /* If the use case need the buffer to be accessed by CPU for some processings,
@@ -540,30 +539,17 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1,
 {
 	drmModeObjectProperties *props;
 	int ret;
-    FILE *fp;
-    char str[10];
-    char trans_key_mode = 1;
-
-	/*
-	* Dual camera demo is supported on Am437x and AM57xx evm. Find which
-	* specific SoC the demo is running to set the trans key mode -
-	* found at the corresponding TRM, for example,
-	* trans_key_mode = 0 -> transparency is disabled
-	* For AM437x: trans_key_mode = 1 GFX Dest Trans
-	*             TransKey applies to GFX overlay, marking which
-	*              pixels come from VID overlays)
-	* For AM57xx: trans_key_mode = 2 Source Key.
-	*             Match on Layer4 makes Layer4 transparent (zorder 3)
-	*
-	* The deault mode is 1 for backward compatibility
-	*/
+  FILE *fp;
+  char str[10];
+  char trans_key_mode = 1;
 
 	fp = fopen("/proc/sys/kernel/hostname", "r");
 	fscanf(fp, "%s", str);
 
-	//terminate the string after the processor name. "-evm" extension is
-	//ignored in case the demo gets supported on other boards like idk etc
-	str[6] = '\0';
+	/* terminate the string after the processor name. "-evm" extension is
+	 * ignored in case the demo gets supported on other boards like idk etc
+   */
+  str[6] = '\0';
 	printf("Running the demo on %s processor\n", str);
 
 	//Set trans-key-mode to 1 if dual camera demo is running on AM437x
