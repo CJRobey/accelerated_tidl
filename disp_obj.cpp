@@ -1,3 +1,31 @@
+/******************************************************************************
+ * Copyright (c) 2019-2020, Texas Instruments Incorporated - http://www.ti.com/
+ *   All rights reserved.
+ *
+ *   Redistribution and use in source and binary forms, with or without
+ *   modification, are permitted provided that the following conditions are met:
+ *       * Redistributions of source code must retain the above copyright
+ *         notice, this list of conditions and the following disclaimer.
+ *       * Redistributions in binary form must reproduce the above copyright
+ *         notice, this list of conditions and the following disclaimer in the
+ *         documentation and/or other materials provided with the distribution.
+ *       * Neither the name of Texas Instruments Incorporated nor the
+ *         names of its contributors may be used to endorse or promote products
+ *         derived from this software without specific prior written permission.
+ *
+ *   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ *   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ *   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ *   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ *   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ *   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ *   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ *   THE POSSIBILITY OF SUCH DAMAGE.
+ *****************************************************************************/
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <iostream>
@@ -46,8 +74,8 @@ DRMDeviceInfo::DRMDeviceInfo() {
 
 
 DRMDeviceInfo::~DRMDeviceInfo() {
-  // for (unsigned int i=0;i<num_planes;i++)
-  //   free_vid_buffers(i);
+  for (unsigned int i=0;i<num_planes;i++)
+    free_vid_buffers(i);
 }
 
 /* If the use case need the buffer to be accessed by CPU for some processings,
@@ -297,13 +325,7 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 
 	for(i = 0; i < num_planes; i++){
 
-		// if (i) {
-		// 	crtc_x_val = PIP_POS_X;
-		// 	crtc_y_val = PIP_POS_Y;
-		// 	crtc_w_val /= 3;
-		// 	crtc_h_val /= 3;
-		// }
-    MSG("Configuring plane id #%d", plane_id[i]);
+    DBG("Configuring plane id #%d", plane_id[i]);
 		props = drmModeObjectGetProperties(fd, plane_id[i],
 			DRM_MODE_OBJECT_PLANE);
 
@@ -312,24 +334,23 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
 			return;
 		}
 
-		//fb id value will be set every time new frame is to be displayed
+		// fb id value will be set every time new frame is to be displayed
 		prop_fbid = find_drm_prop_id(props, "FB_ID");
 
-		//Will need to change run time crtc id to disable/enable display of plane
+		// Will need to change run time crtc id to disable/enable display of plane
 		prop_crtcid = find_drm_prop_id(props, "CRTC_ID");
 
-		//storing zorder val to restore it before quitting the demo
+		// storing zorder val to restore it before quitting the demo
 		zorder_val[i] = get_drm_prop_val(props, "zorder");
-    DBG("plane_data_buffer[%d][0] = ", i);
-    DBG("%p", plane_data_buffer[i][0]);
 
 		add_property(fd, req, props, plane_id[i], "FB_ID", plane_data_buffer[i][0]->fb_id);
 
-		//set the plane properties once. No need to set these values every time
-		//with the display of frame.
+		// set the plane properties once. No need to set these values every time
+		// with the display of frame.
 		add_property(fd, req, props, plane_id[i], "CRTC_ID", crtc_id);
 		add_property(fd, req, props, plane_id[i], "CRTC_X", crtc_x_val);
 		add_property(fd, req, props, plane_id[i], "CRTC_Y", crtc_y_val);
+
     if (net_type == "class") {
   		add_property(fd, req, props, plane_id[i], "CRTC_W", crtc_w_val/2);
   		add_property(fd, req, props, plane_id[i], "CRTC_H", crtc_h_val/2);
@@ -340,8 +361,7 @@ void DRMDeviceInfo::drm_add_plane_property(drmModeAtomicReqPtr req,
     }
 		add_property(fd, req, props, plane_id[i], "SRC_X", 0);
 		add_property(fd, req, props, plane_id[i], "SRC_Y", 0);
-    DBG("Plane0: %dx%d", plane0->width, plane0->height);
-    DBG("Plane1: %dx%d", plane1->width, plane1->height);
+    DBG("Plane[%d] dimensions: %dx%d", i, plane0->width, plane0->height);
 
     if (!i) {
   		add_property(fd, req, props, plane_id[i], "SRC_W", plane0->width << 16);
@@ -426,7 +446,6 @@ void DRMDeviceInfo::drm_crtc_resolution()
 	};
 
 	for (i = 0; i < res->count_crtcs; i++) {
-    MSG("id #%d", res->crtcs[i]);
 		unsigned int _crtc_id = res->crtcs[i];
 
 		crtc = drmModeGetCrtc(fd, _crtc_id);
@@ -509,7 +528,7 @@ int DRMDeviceInfo::drm_init_device(int n_planes)
 			return -1;
 		}
     else {
-      MSG("Opened omapdrm with fd %d", fd);
+      DBG("Opened omapdrm with fd %d", fd);
     }
 	}
 
@@ -559,7 +578,7 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1,
 
 	drmModeAtomicReqPtr req = drmModeAtomicAlloc();
 
-	MSG("drmModeAtomicAlloc done fd = %d, crtc_id = %u\n", fd, crtc_id);
+	DBG("drmModeAtomicAlloc done fd = %d, crtc_id = %u\n", fd, crtc_id);
 	/* Set CRTC properties */
 	props = drmModeObjectGetProperties(fd, crtc_id,
 		DRM_MODE_OBJECT_CRTC);
@@ -600,7 +619,6 @@ int DRMDeviceInfo::drm_init_dss(ImageParams *plane0, ImageParams *plane1,
 		return -1;
 	}
 
-  MSG("before drmModeAtomicFree");
 	drmModeAtomicFree(req);
 	return 0;
 }
