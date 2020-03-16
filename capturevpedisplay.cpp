@@ -1,3 +1,31 @@
+/******************************************************************************
+ * Copyright (c) 2019-2020, Texas Instruments Incorporated - http://www.ti.com/
+ *   All rights reserved.
+ *
+ *   Redistribution and use in source and binary forms, with or without
+ *   modification, are permitted provided that the following conditions are met:
+ *       * Redistributions of source code must retain the above copyright
+ *         notice, this list of conditions and the following disclaimer.
+ *       * Redistributions in binary form must reproduce the above copyright
+ *         notice, this list of conditions and the following disclaimer in the
+ *         documentation and/or other materials provided with the distribution.
+ *       * Neither the name of Texas Instruments Incorporated nor the
+ *         names of its contributors may be used to endorse or promote products
+ *         derived from this software without specific prior written permission.
+ *
+ *   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ *   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ *   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ *   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ *   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ *   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ *   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ *   THE POSSIBILITY OF SUCH DAMAGE.
+ *****************************************************************************/
+
 #include <stdio.h>
 #include <iostream>
 #include <stdlib.h>
@@ -37,6 +65,9 @@ CamDisp::CamDisp() {
   dst_h = TIDL_MODEL_HEIGHT;
   alpha = 255;
   frame_num = 0;
+}
+
+CamDisp::~CamDisp() {
 }
 
 
@@ -210,9 +241,10 @@ bool CamDisp::init_capture_pipeline() {
   // initialize the second plane of data
   if (num_planes > 1) {
     if (net_type == "seg") {
-      // since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
-      // this buffer needs to be half its normal size. There are adjustments
-      // in disp_obj as well
+      /* since TIDL outputs 8-bit data and DSS consumes a minimum of 16-bit,
+       * this buffer needs to be half its normal size. There are adjustments
+       * in disp_obj as well
+       */
       if (drm_device.get_vid_buffers(vpe.m_num_buffers, FOURCC_STR("RX12"), dst_w, dst_h, 2, 1)) {
         DBG("\nSegmentation overlay plane successfully allocated");
         for (int b=0; b<vpe.m_num_buffers; b++) {
@@ -228,7 +260,10 @@ bool CamDisp::init_capture_pipeline() {
     }
     else if (net_type == "ssd" || net_type == "class") {
       if (drm_device.get_vid_buffers(vpe.m_num_buffers, FOURCC_STR("AR24"), dst_w, dst_h, 4, 1)) {
-        DBG("\nBounding Box overlay plane successfully allocated");
+
+        if (net_type == "ssd") DBG("\nBounding Box overlay plane successfully allocated");
+        if (net_type == "class") DBG("\nClassification overlay plane successfully allocated");
+
         for (int b=0; b<vpe.m_num_buffers; b++) {
           print_omap_bo(drm_device.plane_data_buffer[1][b]->bo[0]);
         }
@@ -262,43 +297,20 @@ void *CamDisp::grab_image() {
    * don't want to do this until the user calls for another frame. Otherwise,
    * the data pointed to by *imagedata could be corrupted.
    */
-  auto qdqStart = high_resolution_clock::now();
   if (stop_after_one) {
     vpe.output_qbuf(frame_num, bo_vpe_out[frame_num]->fd[0]);
     frame_num = vpe.input_dqbuf();
     vip.queue_buf(bo_vpe_in[frame_num]->fd[0], frame_num);
   }
-  auto qdqStop = high_resolution_clock::now();
-  auto qdqDuration = duration_cast<milliseconds>(qdqStop - qdqStart);
-  DBG("VPE QUEUE/VPE DQ time: %d ms", (int) qdqDuration.count());
 
   /* dequeue the vip */
-  auto vipStart = high_resolution_clock::now();
   frame_num = vip.dequeue_buf();
-  auto vipStop = high_resolution_clock::now();
-  auto vipDuration = duration_cast<milliseconds>(vipStop - vipStart);
-  DBG("USB QUEUE time: %d ms", (int) vipDuration.count());
 
   // In other terms, "if the camera is a usb camera"
   if (vip.src.memory == V4L2_MEMORY_MMAP) {
-    // if (use_cmem)
-    //   dma_buf_do_cache_operation(bo_vpe_in[frame_num]->fd[0], (DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ));
-    DBG("memcpy from address %p to address %p of size 0x%x",
-      vip.src.base_addr[frame_num], bo_vpe_in[frame_num]->buf_mem_addr[0],
-      vip.src.size);
-    auto cpyStart = high_resolution_clock::now();
-
     memcpy(bo_vpe_in[frame_num]->buf_mem_addr[0],
       vip.src.base_addr[frame_num], vip.src.size);
-
-    // if (use_cmem)
-    //   dma_buf_do_cache_operation(bo_vpe_in[frame_num]->fd[0], (DMA_BUF_SYNC_WRITE | DMA_BUF_SYNC_READ));
-
-    auto cpyStop = high_resolution_clock::now();
-    auto cpyDuration = duration_cast<milliseconds>(cpyStop - cpyStart);
-    DBG("USB -> VPE memcpy time: %d ms", (int) cpyDuration.count());
   }
-
 
   /* queue that frame onto the vpe */
   if (!vpe.input_qbuf(bo_vpe_in[frame_num]->fd[0], frame_num)) {
@@ -313,21 +325,19 @@ void *CamDisp::grab_image() {
     init_vpe_stream();
   }
 
-  auto vpeStart = high_resolution_clock::now();
   /* Dequeue the frame of the ready data */
   frame_num = vpe.output_dqbuf();
-  auto vpeStop = high_resolution_clock::now();
-  auto vpeDuration = duration_cast<milliseconds>(vpeStop - vpeStart);
-  DBG("USB -> VPE vpe dequeue time: %d ms", (int) vpeDuration.count());
+
   // if no display, then the api is not called
   disp_frame_num = frame_num;
 
-  /**********DATA IS HERE!!************/
+  /********** DATA IS HERE ************/
   void *imagedata = (void *) bo_vpe_out[frame_num]->buf_mem_addr[0];
   DBG("Image data at %p of size 0x%x", imagedata, vpe.dst.size);
   return imagedata;
 }
 
+/* Helper function for the grab_image function above*/
 void CamDisp::init_vpe_stream() {
   int count = 1;
   for (int i = 1; i <= vpe.m_num_buffers; i++) {
@@ -346,6 +356,10 @@ void CamDisp::init_vpe_stream() {
   }
 }
 
+void *CamDisp::get_overlay_plane_ptr() {
+  return drm_device.plane_data_buffer[1][frame_num]->buf_mem_addr[0];
+}
+
 void CamDisp::turn_off() {
   vip.stream_off();
   vpe.stream_off(1);
@@ -356,7 +370,6 @@ void CamDisp::turn_off() {
  * ./test-vpe <num_frames> <0/1 (to save data)> - Make sure to uncomment the
  * "main" section beforehand if not already done.
  */
-
 // int main(int argc, char *argv[]) {
 //   int cap_w = 800;
 //   int cap_h = 600;
