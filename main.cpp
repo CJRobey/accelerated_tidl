@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2018, Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (c) 2019-2020, Texas Instruments Incorporated - http://www.ti.com/
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -51,6 +51,7 @@
 #include "../common/utils.h"
 #include "../common/video_utils.h"
 #include "save_utils.h"
+#include "reader.h"
 
 using namespace std;
 using namespace tidl;
@@ -70,35 +71,7 @@ using namespace chrono;
 #define SEG_DEFAULT_INPUT_FRAMES  (9)
 #define SEG_DEFAULT_OBJECT_CLASSES_LIST_FILE "./configs/jseg21_objects.json"
 
-#define MAX_NUM_ROI 4
 
-#ifdef TWO_ROIs
-#define RES_X 400
-#define RES_Y 300
-#define NUM_ROI_X 2
-#define NUM_ROI_Y 1
-#define X_OFFSET 0
-#define X_STEP   176
-#define Y_OFFSET 52
-#define Y_STEP   224
-#else
-#define RES_X 480
-#define RES_Y 480
-#define NUM_ROI_X 1
-#define NUM_ROI_Y 1
-#define X_OFFSET 10
-#define X_STEP   460
-#define Y_OFFSET 10
-#define Y_STEP   460
-#endif
-int IMAGE_CLASSES_NUM = 0;
-#define MAX_CLASSES 10
-#define MAX_SELECTED_ITEMS 10
-std::string labels_classes[MAX_CLASSES];
-int selected_items_size = 0;
-int selected_items[MAX_SELECTED_ITEMS];
-
-#define NUM_ROI (NUM_ROI_X * NUM_ROI_Y)
 
 
 /* Enable this macro to record individual output files and */
@@ -109,6 +82,11 @@ std::unique_ptr<ObjectClasses> object_classes;
 uint32_t orig_width;
 uint32_t orig_height;
 uint32_t num_frames_file;
+extern int IMAGE_CLASSES_NUM;
+extern int selected_items_size;
+extern int selected_items[];
+extern string labels_classes[];
+extern Rect rect_crop[];
 
 static int tf_postprocess(uchar *in, int out_size, int size, int roi_idx,
                           int frame_idx, int f_id);
@@ -129,117 +107,24 @@ bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
               CamDisp &cap);
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam, float fps);
+                      CamDisp& cam, float fps);
 // Create frame overlayed with pixel-level segmentation
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
-                      const cmdline_opts_t& opts, const CamDisp& cam, float fps);
+                      const cmdline_opts_t& opts, CamDisp& cam, float fps);
 void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cap,
                   const Configuration& c, uint32_t frame_idx, float fps, uint32_t num_eops,
                   uint32_t num_eves, uint32_t num_dsps);
 void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale);
 
 static void DisplayHelp();
-void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
-                int channel_size);
 
-/***************************************************************/
-/* Slider to control detection confidence level                */
-/***************************************************************/
-// static void on_trackbar( int slider_id, void *inst )
-// {
-//   //This function is invoked on every slider move.
-//   //No action required, since prob_slider is automatically updated.
-//   //But, for any additional operation on slider move, this is the place to insert code.
-// }
-
-
-Rect rect_crop[NUM_ROI];
-
-// TODO : Get rid of this
-void setup_rect_crop(){
-  for (int y = 0; y < NUM_ROI_Y; y ++) {
-     for (int x = 0; x < NUM_ROI_X; x ++) {
-        rect_crop[y * NUM_ROI_X + x] = Rect(X_OFFSET + x * X_STEP,
-                                           Y_OFFSET + y * Y_STEP, X_STEP, Y_STEP);
-        std::cout << "Rect[" << X_OFFSET + x * X_STEP << ", "
-                  << Y_OFFSET + y * Y_STEP << "]" << std::endl;
-     }
-  }
-}
-static int get_classindex(std::string str2find)
-{
-  if(selected_items_size >= MAX_SELECTED_ITEMS)
-  {
-     std::cout << "Max number of selected classes is reached! (" << selected_items_size << ")!" << std::endl;
-     return -1;
-  }
-  for (int i = 0; i < IMAGE_CLASSES_NUM; i ++)
-  {
-    if(labels_classes[i].compare(str2find) == 0)
-    {
-      selected_items[selected_items_size ++] = i;
-      return i;
-    }
-  }
-  std::cout << "Not found: " << str2find << std::endl << std::flush;
-  return -1;
-}
-
-
-int populate_selected_items (const char *filename)
-{
-  ifstream file(filename);
-  if(file.is_open())
-  {
-    string inputLine;
-
-    while (getline(file, inputLine) )                 //while the end of file is NOT reached
-    {
-      int res = get_classindex(inputLine);
-      std::cout << "Searching for " << inputLine  << std::endl;
-      if(res >= 0) {
-        std::cout << "Found: " << res << std::endl;
-      } else {
-        std::cout << "Not Found: " << res << std::endl;
-      }
-    }
-    file.close();
-  }
-#if 0
-  std::cout << "==Total of " << selected_items_size << " items!" << std::endl;
-  for (int i = 0; i < selected_items_size; i ++)
-    std::cout << i << ") " << selected_items[i] << std::endl;
-#endif
-  return selected_items_size;
-}
-
-void populate_labels (const char *filename)
-{
-  ifstream file(filename);
-  if(file.is_open())
-  {
-    string inputLine;
-
-    while (getline(file, inputLine) )                 //while the end of file is NOT reached
-    {
-      labels_classes[IMAGE_CLASSES_NUM ++] = string(inputLine);
-    }
-    file.close();
-  }
-#if 1
-  std::cout << "==Total of " << IMAGE_CLASSES_NUM << " items!" << std::endl;
-  for (int i = 0; i < IMAGE_CLASSES_NUM; i ++)
-    std::cout << i << ") " << labels_classes[i] << std::endl;
-#endif
-}
 
 int main(int argc, char *argv[])
 {
     // Catch ctrl-c to ensure a clean exit
     signal(SIGABRT, exit);
     signal(SIGTERM, exit);
-    setup_rect_crop();
 
     // If there are no devices capable of offloading TIDL on the SoC, exit
     uint32_t num_eves = Executor::GetNumDevices(DeviceType::EVE);
@@ -572,16 +457,16 @@ bool RunConfiguration(const cmdline_opts_t& opts)
            }
           auto rdStop = high_resolution_clock::now();
           auto rdDuration = duration_cast<milliseconds>(rdStop - rdStart);
-          cout << "One buffer read time:" << rdDuration.count() << " ms" << endl;
+          if (opts.verbose) cout << "One buffer read time:" <<
+            rdDuration.count() << " ms" << endl;
           eop->ProcessFrameStartAsync();
         }
-        cam.turn_off();
+
         tloop1 = chrono::steady_clock::now();
         chrono::duration<float> elapsed = tloop1 - tloop0;
         cout << "Loop total time (including read/write/opencv/print/etc): "
                   << setw(6) << setprecision(4)
                   << (elapsed.count() * 1000) << "ms" << endl;
-
         FreeMemory(eops);
         for (auto eop : eops)  delete eop;
         delete e_eve;
@@ -624,6 +509,8 @@ Executor* CreateExecutor(DeviceType dt, uint32_t num, const Configuration& c)
 }
 
 
+/******************************************************************************/
+/********************** Read Input into TIDL Functions ************************/
 /* This function will read the captured frame into the input buffer of TIDL.
  * However, the output buffer is left alone for TIDL to allocate and manage the
  * memory.
@@ -651,7 +538,8 @@ bool ReadFrameInput(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
     auto cpyStop = high_resolution_clock::now();
     auto cpyDuration = duration_cast<milliseconds>(cpyStop - cpyStart);
-    DBG("VPE -> TIDL memcpy time: %d ms", (int) cpyDuration.count());
+    if (opts.verbose) DBG("VPE -> TIDL memcpy time: %d ms", (int)
+      cpyDuration.count());
     assert (frame_buffer != nullptr);
     return true;
 }
@@ -682,41 +570,43 @@ bool ReadFrameIO(ExecutionObjectPipeline& eop, uint32_t frame_idx,
     memcpy(frame_buffer+(2*channel_size), channels[2].ptr(), channel_size);
 
     ArgInfo in = {ArgInfo(frame_buffer, channel_size*3)};
-    ArgInfo out = {ArgInfo(cap.drm_device.plane_data_buffer[1][cap.frame_num]->buf_mem_addr[0], channel_size)};
-    // ArgInfo out = {ArgInfo(eop.GetOutputBufferPtr(), channel_size)}
+    ArgInfo out = {ArgInfo(cap.get_overlay_plane_ptr(), channel_size)};
     eop.SetInputOutputBuffer(in, out);
     assert (frame_buffer != nullptr);
     return true;
 }
+/******************************************************************************/
+/******************************************************************************/
 
-/* This function is ultimately just going to write a couple of bounding boxes
- * directly onto the second plane of the DSS's buffer. When the disp_obj()
+
+/******************************************************************************/
+/************************* Writing Output Functions ***************************/
+/* WriteFrameOutputSSD is ultimately just going to write a couple of bounding
+ * boxes directly onto the second plane of the DSS's buffer. When the disp_frame
  * function is called, the rectangles will be displayed.
  */
 bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
                       const Configuration& c, const cmdline_opts_t& opts,
-                      const CamDisp& cam, float fps)
+                      CamDisp& cam, float fps)
 {
     // Asseemble original frame
     int width  = c.inWidth;
     int height = c.inHeight;
     float confidence_value = 30;
-    // int channel_size = width * height;
     Mat frame;
 
-    /* omap_bo_map is grabbing the pointer to the memory allocated by plane #2
-     * of the DSS. It then writes over that plane as it waits to be displayed.
+    /* clear the old rectangles - note that
+     * cam.get_overlay_plane_ptr() is where the data from the display sub system is.
      */
-
-    // clear the old rectangles
-    memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0], 0, height*width*4);
+    void *dss_data = cam.get_overlay_plane_ptr();
+    memset(dss_data, 0, height*width*4);
 
     /* Data is being read in as bgra - thus the user may control the alpha
      * values either from this write function or by passing in the alpha value
      * to the initializer of the CamDisp object. Value go from 0 (totally clear)
      * to 255 (opaque)
      */
-    frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0]);
+    frame = Mat(height, width, CV_8UC4, dss_data);
 
     // Draw boxes around classified objects
     float *out = (float *) eop.GetOutputBufferPtr();
@@ -771,66 +661,58 @@ bool WriteFrameOutputSSD(const ExecutionObjectPipeline& eop,
        cv::putText(frame, object_class.label, Point(xmin,ymax),
                    FONT_HERSHEY_DUPLEX, scale, Scalar(255,255,255,alpha), thickness);
 
-        MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(), object_class.color.blue,
-            object_class.color.green, object_class.color.red);
+        MSG("%s class blue %d, green %d, red %d", object_class.label.c_str(),
+          object_class.color.blue, object_class.color.green,
+          object_class.color.red);
     }
     OverlayFPS(frame, c, fps, 1);
 
     return true;
 }
 
-// Create Overlay mask for pixel-level segmentation
-void CreateMask(uchar *classes, uchar *ma, uchar *mb, uchar *mg, uchar* mr,
-                int channel_size)
-{
-    for (int i = 0; i < channel_size; i++)
-    {
-        const ObjectClass& object_class = object_classes->At(classes[i]);
-        ma[i] = 255;
-        mb[i] = object_class.color.blue;
-        mg[i] = object_class.color.green;
-        mr[i] = object_class.color.red;
-    }
-}
 
 // Create frame overlayed with pixel-level segmentation
 bool WriteFrameOutputSEG(const ExecutionObjectPipeline &eop,
                       const Configuration& c,
-                      const cmdline_opts_t& opts, const CamDisp& cap, float fps)
+                      const cmdline_opts_t& opts, CamDisp& cap, float fps)
 {
     unsigned char *out = (unsigned char *) eop.GetOutputBufferPtr();
     int width          = c.inWidth;
     int height         = c.inHeight;
     int channel_size   = width * height;
-    uint16_t *disp_data = (uint16_t *)
-      cap.drm_device.plane_data_buffer[1][cap.disp_frame_num]->buf_mem_addr[0];
+
+    /* note that
+     * cap.get_overlay_plane_ptr(); is where the data from the display sub system is.
+     */
+    uint16_t *dss_data = (uint16_t *) cap.get_overlay_plane_ptr();
 
     // Color fmt is 0bXXXXRRRRGGGGBBBB
     for (int i = 0; i < channel_size; i++) {
       switch (out[i]) {
         case 0: // background class
-          disp_data[i] = out[i];
+          dss_data[i] = out[i];
           break;
         case 1: // road class
-          disp_data[i] = 0x00F0;
+          dss_data[i] = 0x00F0;
           break;
         case 2: // pedestrian class
-          disp_data[i] = 0x0F00;
+          dss_data[i] = 0x0F00;
           break;
         case 3: // road sign class
-          disp_data[i] = 0x000F;
+          dss_data[i] = 0x000F;
           break;
         case 4: // vehicle class
-          disp_data[i] = 0x0FF0;
+          dss_data[i] = 0x0FF0;
           break;
         default:
-          disp_data[i] = 0x0000;
+          dss_data[i] = 0x0000;
         }
     }
-    Mat frame(c.inHeight, c.inWidth, CV_16UC1, disp_data);
+    Mat frame(c.inHeight, c.inWidth, CV_16UC1, dss_data);
     OverlayFPS(frame, c, fps, 1);
     return true;
 }
+
 
 void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cam,
                   const Configuration& c, uint32_t frame_idx, float fps, uint32_t num_eops,
@@ -839,18 +721,18 @@ void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cam,
   int width  = c.inWidth;
   int height = c.inHeight;
 
-  /* omap_bo_map is grabbing the pointer to the memory allocated by plane #2
-   * of the DSS. It then writes over that plane as it waits to be displayed.
+  /* clear the classes - note that
+   * cam.get_overlay_plane_ptr() is where the data from the display sub system is.
    */
-  /* clear the classes */
-  memset(cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0], 0, height*width*4);
+  void *dss_data = cam.get_overlay_plane_ptr();
+  memset(dss_data, 0, height*width*4);
 
   /* Data is being read in as bgra - thus the user may control the alpha
    * values either from this write function or by passing in the alpha value
    * to the initializer of the CamDisp object. Value go from 0 (totally clear)
    * to 255 (opaque)
    */
-  Mat frame = Mat(height, width, CV_8UC4, cam.drm_device.plane_data_buffer[1][cam.frame_num]->buf_mem_addr[0]);
+  Mat frame = Mat(height, width, CV_8UC4, dss_data);
 
   int f_id = eop->GetFrameIndex();
   int curr_roi = f_id % NUM_ROI;
@@ -886,6 +768,42 @@ void WriteFrameOutputCLASS(const ExecutionObjectPipeline* eop, CamDisp &cam,
   OverlayFPS(frame, c, fps, 0.45);
 }
 
+
+/* OverlayFPS takes as an argument, a CV Mat class that is the screen to be
+ * written upon, the configuration, the fps to be written, and the scale
+ * (essentially the size) of the text. It will then overlay the fps onto the
+ * image that was passed in on the bottom right corner
+ */
+void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale) {
+
+  // write the data in the bottom right corner of the screen
+  int thickness = 1;
+  int baseline = 0;
+
+  char fps_string[20];
+  sprintf(fps_string, "FPS: %.2f", fps);
+  Size text_size = getTextSize(fps_string, FONT_HERSHEY_DUPLEX, scale,
+                              thickness, &baseline);
+  baseline += thickness;
+  // place the name of the class at the botton of the box
+  if (fps_screen.channels() == 4) {
+    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
+      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
+      Scalar(255,255,255,255), thickness);
+  }
+  else {
+    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
+      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
+      0xF000, thickness);
+  }
+}
+/******************************************************************************/
+/******************************************************************************/
+
+
+
+/******************************************************************************/
+/**************** Classification Display Helper Functions *********************/
 int ShowRegion(int roi_history[])
 {
   if((roi_history[0] >= 0) && (roi_history[0] == roi_history[1])) return roi_history[0];
@@ -949,65 +867,41 @@ int tf_postprocess(uchar *in, int out_size, int size, int roi_idx,
 
       if (tf_expected_id(id))
       {
-        std::cout << "Frame:" << frame_idx << "," << f_id << " ROI[" << roi_idx << "]: rank="
-                  << k-i << ", outval=" << (float)sorted[i].first / 255 << ", "
-                  << labels_classes[id] << std::endl;
+        std::cout << "Frame:" << frame_idx << "," << f_id << " ROI[" << roi_idx
+        << "]: rank=" << k-i << ", outval=" << (float)sorted[i].first / 255
+        << ", " << labels_classes[id] << std::endl;
         rpt_id = id;
       }
   }
   return rpt_id;
 }
-
-
-void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale) {
-
-  // write the data in the bottom right corner of the screen
-  int thickness = 1;
-  int baseline = 0;
-
-  char fps_string[20];
-  sprintf(fps_string, "FPS: %.2f", fps);
-  Size text_size = getTextSize(fps_string, FONT_HERSHEY_DUPLEX, scale,
-                              thickness, &baseline);
-  baseline += thickness;
-  // place the name of the class at the botton of the box
-  if (fps_screen.channels() == 4) {
-    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
-      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
-      Scalar(255,255,255,255), thickness);
-  }
-  else {
-    cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
-      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
-      0xF000, thickness);
-  }
-}
+/******************************************************************************/
+/******************************************************************************/
 
 
 void DisplayHelp()
 {
     std::cout <<
-    "Usage: ssd_multibox\n"
-    "  Will run partitioned ssd_multibox network to perform "
-    "multi-objects detection\n"
-    "  and classification.  First part of network "
+    "Usage: accelerated_tidl\n"
+    "  Will run partitioned network to perform "
+    "multi-objects or segmentation detection\n"
+    "  and classification, or just classification.  First part of network "
     "(layersGroupId 1) runs on EVE,\n"
     "  second part (layersGroupId 2) runs on DSP.\n"
-    "  Use -c to run a different segmentation network.  Default is jdetnet_voc.\n"
+    "  Use -c to run a different network than the default for each net_type\n"
     "Optional arguments:\n"
-    " -c <config>          Valid configs: jdetnet_voc, jdetnet \n"
+    " -t <net_type>        Valid net_types: ssd, seg, class\n"
+    " -c <config>          Valid configs for ssd: jdetnet_voc, jdetnet \n"
     " -d <number>          Number of dsp cores to use\n"
     " -e <number>          Number of eve cores to use\n"
-    " -i <image>           Path to the image file as input\n"
-    "                      Default are 9 frames in testvecs\n"
-    " -i camera<number>    Use camera as input\n"
-    "                      video input port: /dev/video<number>\n"
-    " -i <name>.{mp4,mov,avi}  Use video file as input\n"
+    " -i <number>          Use /dev/video<number> as input\n"
     " -l <objects_list>    Path to the object classes list file\n"
     " -f <number>          Number of frames to process\n"
     " -w <number>          Output image/video width\n"
     " -p <number>          Output probability threshold in percentage\n"
     "                      Default is 25 percent or higher\n"
+    " -q                   Only for segmenation demo - executes a quicker," \
+    " and less computationally expensive dislay routine\n"
     " -v                   Verbose output during execution\n"
     " -h                   Help\n";
 }
