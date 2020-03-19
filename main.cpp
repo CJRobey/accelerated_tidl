@@ -787,15 +787,22 @@ void OverlayFPS(Mat fps_screen, const Configuration& c, float fps, double scale)
   baseline += thickness;
   // place the name of the class at the botton of the box
   if (fps_screen.channels() == 4) {
+    cv::rectangle(fps_screen, Point(c.inWidth,c.inHeight),
+      Point(c.inWidth, c.inHeight) - Point(text_size.width, text_size.height),
+      Scalar(0,0,0,255), -1);
     cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
-      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
+      Point(text_size.width, 0), FONT_HERSHEY_DUPLEX, scale,
       Scalar(255,255,255,255), thickness);
   }
   else {
+    cv::rectangle(fps_screen, Point(c.inWidth,c.inHeight),
+      Point(c.inWidth, c.inHeight) - Point(text_size.width,
+      text_size.height+baseline), 0xF000, -1);
     cv::putText(fps_screen, fps_string, Point(c.inWidth, c.inHeight) -
-      Point(text_size.width, text_size.height), FONT_HERSHEY_DUPLEX, scale,
-      0xF000, thickness);
+      Point(text_size.width, 0), FONT_HERSHEY_DUPLEX, scale,
+      0xFFFF, thickness);
   }
+
 }
 /******************************************************************************/
 /******************************************************************************/
