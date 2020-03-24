@@ -1,6 +1,9 @@
 ## Usage
 
-From the tidl psdk, in the folder /usr/share/ti/tidl/examples/accelerated_tidl/
+In the TI psdk, git clone into /usr/share/ti/tidl/examples/
+
+Then `cd accelerated_tidl`
+
 
 /etc/init.d/weston stop
 make accelerated_tidl;
