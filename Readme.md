@@ -42,7 +42,7 @@ SSD Network on the Beaglebone AI or AM5729 IDK: <br/>
 `./accelerated_tidl -e 4 -d 1 -g 2 -i 1 -v -f 500 -c jdetnet -l configs/jdetnet_objects.json -p 15 -t ssd` <br/>
 
 Classification Network on the Beaglebone AI or AM5729 IDK: <br/>
-`./accelerated_tidl -e 4 -d 1 -g 2 -i 1 -v -f 500 -c stream_config_toysdogs.txt -l configs/toydogsnet.txt -t class` <br/>
+`./accelerated_tidl -e 4 -d 1 -g 2 -i 1 -v -f 500 -c configs/stream_config_toydogs.txt -l configs/toydogsnet.txt -t class` <br/>
 
 ### Resetting CMEM
 
