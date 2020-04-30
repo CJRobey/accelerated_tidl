@@ -379,10 +379,11 @@ void CamDisp::turn_off() {
 //   // This is the type of neural net that is being targeted
 //   std::string net_type = "seg";
 //
+//   init_cmem();
 //   // capture w, capture h, output w, output h, device name, is usb?
-//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video2", true, net_type);
+//   CamDisp cam(cap_w, cap_h, model_w, model_h, 150, "/dev/video1", true, net_type, false);
 //
-//   cam.init_capture_pipeline(net_type);
+//   cam.init_capture_pipeline();
 //   auto start = std::chrono::high_resolution_clock::now();
 //
 //   int num_frames = 300;
@@ -409,5 +410,4 @@ void CamDisp::turn_off() {
 //   MSG("Total time to capture %d frames: %f seconds", num_frames, (float)
 //       duration.count()/1000);
 //   MSG("******************");
-//   cam.turn_off();
 // }
